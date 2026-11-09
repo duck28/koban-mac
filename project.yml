@@ -1,0 +1,54 @@
+# XcodeGen spec for Koban for macOS. Generate the Xcode project with:
+#   brew install xcodegen && xcodegen generate
+# Koban.xcodeproj is generated output — edit this file, not the project.
+name: Koban
+
+options:
+  bundleIdPrefix: com.roland-matuz
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  Koban:
+    type: application
+    platform: macOS
+    sources:
+      - path: Koban
+      # Core is compiled straight into the app (same module, no `public` needed).
+      # It is also a standalone Swift package for unit tests: cd KobanKit && swift test
+      - path: KobanKit/Sources/KobanCore
+        group: KobanCore
+    info:
+      path: Koban/Info.plist
+      properties:
+        CFBundleName: Koban
+        CFBundleDisplayName: Koban
+        CFBundleIconFile: AppIcon
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.finance
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSHumanReadableCopyright: "© 2026 Roland Matuz"
+    entitlements:
+      path: Koban/Koban.entitlements
+      properties:
+        # Sandbox is off for now: Koban reads/writes user-chosen DB and backup folders by path
+        # (like the Windows build). Enabling it needs security-scoped bookmarks first.
+        com.apple.security.app-sandbox: false
+    settings:
+      base:
+        PRODUCT_NAME: Koban
+        PRODUCT_BUNDLE_IDENTIFIER: com.roland-matuz.koban
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        COMBINE_HIDPI_IMAGES: YES
+    scheme:
+      testTargets: []
