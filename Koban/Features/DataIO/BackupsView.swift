@@ -113,10 +113,12 @@ struct BackupsView: View {
                 ZIcon("lock", size: 16).foregroundStyle(Zen.indigo)
                 VStack(alignment: .leading, spacing: 1) {
                     (Text("Vault Encryption Key Mode: ").foregroundColor(Zen.ink)
-                     + Text(custom ? "Custom Passphrase Active (PBKDF2-SHA256 + AES-256-GCM)" : "Automatic Hardware/App Key (AES-256-GCM)")
+                     + Text(custom ? "Custom Passphrase Active (salted SHA-256 KDF + AES-256-GCM)" : "Built-in Default Key (AES-256-GCM)")
                         .foregroundColor(Zen.positive))
                         .font(.zen(12, .medium))
-                    Text("Every category, budget, and transaction row in SQLite is stored as authenticated AES-256-GCM ciphertext.")
+                    Text(custom
+                         ? "The ledger is stored as authenticated AES-256-GCM ciphertext, keyed by your passphrase."
+                         : "The default key is built into the app: anyone with a copy of koban.db or a backup can decrypt it. Set a custom passphrase to protect your data.")
                         .font(.zen(11)).foregroundStyle(Zen.ink3)
                 }
             }

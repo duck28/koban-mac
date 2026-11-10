@@ -95,3 +95,11 @@ git push origin v1.2.0
 The app is ad-hoc signed, not notarized: on first launch, open System Settings → Privacy & Security → "Open Anyway". Signing with a Developer ID and notarization need an Apple Developer account.
 
 The WebDAV sync format shared with the Windows build is specified in [docs/WEBDAV-SPEC.md](docs/WEBDAV-SPEC.md).
+
+## Security
+
+⚠️ **Without a custom vault passphrase, `koban.db` uses a built-in default key and is not protected** against anyone who has a copy of the file (backups and WebDAV copies included). Set a passphrase in **Backups & Exports**. [SECURITY.md](SECURITY.md) lists the current limitations and how to report vulnerabilities privately; [docs/VAULT-V2-SPEC.md](docs/VAULT-V2-SPEC.md) describes the planned replacement format.
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
