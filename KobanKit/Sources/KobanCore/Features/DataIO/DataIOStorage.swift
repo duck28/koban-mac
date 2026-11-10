@@ -78,7 +78,7 @@ enum DataIOStorage {
     /// KOBAN_DB_PATH (developer override) pins the database; the location pointer must not be
     /// rewritten then, since it lives in the real Application Support folder and would be ignored.
     static var locationOverrideActive: Bool {
-        !(ProcessInfo.processInfo.environment["KOBAN_DB_PATH"] ?? "").isEmpty
+        KobanPaths.developerDatabaseOverride != nil
     }
 
     static let overrideMessage = "The database location is pinned by the KOBAN_DB_PATH environment variable (developer override) and can't be changed in this session."

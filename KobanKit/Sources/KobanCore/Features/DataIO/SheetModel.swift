@@ -100,9 +100,10 @@ enum DataIOJS {
         parseFloat(String(s.filter { ("0"..."9").contains($0) || $0 == "." || $0 == "-" }))
     }
 
-    /// `parseFloat(...) || 0`
+    /// `parseFloat(...) || 0`, but also 0 for ±Infinity: a non-finite number makes JSONEncoder
+    /// throw, so a single imported "Infinity" would make every later vault save fail.
     static func orZero(_ v: Double?) -> Double {
-        guard let v, !v.isNaN else { return 0 }
+        guard let v, v.isFinite else { return 0 }
         return v
     }
 
@@ -112,13 +113,24 @@ enum DataIOJS {
 // MARK: - CSV
 
 enum SheetCSV {
-    /// escapeCsvCell in exportImport.ts (quotes only when the cell has , " or \n).
+    /// escapeCsvCell in exportImport.ts. Text starting with `=`, `+`, `-`, `@`, tab or CR is run as
+    /// a formula by Excel / Numbers / LibreOffice, so it gets a leading `'`; numbers are untouched.
+    /// Quotes cells containing , " CR or LF.
     static func escape(_ cell: SheetCell) -> String {
-        let s = cell.text
-        if s.contains(",") || s.contains("\"") || s.contains("\n") {
+        var s = cell.text
+        if case .string = cell, let first = s.unicodeScalars.first,
+           "=+-@\t\r".unicodeScalars.contains(first), !isPlainNumber(s) {
+            s = "'" + s
+        }
+        if s.unicodeScalars.contains(where: { $0 == "," || $0 == "\"" || $0 == "\n" || $0 == "\r" }) {
             return "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\""
         }
         return s
+    }
+
+    /// `-12.50`, `+3`, `-4,2`: numbers written as text, which must stay numeric in the export.
+    private static func isPlainNumber(_ s: String) -> Bool {
+        s.range(of: #"^[+-]?[0-9]+([.,][0-9]+)?$"#, options: .regularExpression) != nil
     }
 
     /// rowsToCsv: CRLF line endings, no trailing newline.

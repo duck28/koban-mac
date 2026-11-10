@@ -58,7 +58,7 @@ enum L10n {
         guard let code, isSupported(code) else { return }
         if state.language != code { state.language = code }
         // Dev runs against a scratch vault (KOBAN_DB_PATH) must not change the real app's preference.
-        guard ProcessInfo.processInfo.environment["KOBAN_DB_PATH"] == nil else { return }
+        guard KobanPaths.developerDatabaseOverride == nil else { return }
         UserDefaults.standard.set(code, forKey: storageKey)
     }
 

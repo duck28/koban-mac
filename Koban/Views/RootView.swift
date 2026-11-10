@@ -41,7 +41,8 @@ struct RootView: View {
         // (tokens, scaled fonts and L10n strings are read at render time).
         .id(appearanceKey)
         .overlay {
-            if let modal = store.modal {
+            // Never draw a dialog (import, export, setup…) on top of the app lock screen.
+            if let modal = store.modal, !store.isAppLocked {
                 ZenModal(onDismiss: { if modal.dismissOnBackdrop { store.dismissModal() } }, width: nil) {
                     modal.content
                 }

@@ -16,9 +16,20 @@ enum KobanPaths {
     /// Text file holding a custom database path (same mechanism as on Windows).
     static var pointerURL: URL { appDirectory.appendingPathComponent("db_location.txt") }
 
-    static var activeDatabaseURL: URL {
-        // Developer override (tests, screenshots, demo data) that leaves the real vault untouched.
+    /// Developer override (tests, screenshots, demo data) that leaves the real vault untouched.
+    /// Debug builds only: in a release build anyone who can launch the app with an environment
+    /// variable could point it at an attacker-supplied database.
+    static var developerDatabaseOverride: String? {
+        #if DEBUG
         if let override = ProcessInfo.processInfo.environment["KOBAN_DB_PATH"], !override.isEmpty {
+            return override
+        }
+        #endif
+        return nil
+    }
+
+    static var activeDatabaseURL: URL {
+        if let override = developerDatabaseOverride {
             return URL(fileURLWithPath: override)
         }
         guard let raw = try? String(contentsOf: pointerURL, encoding: .utf8) else { return defaultDatabaseURL }

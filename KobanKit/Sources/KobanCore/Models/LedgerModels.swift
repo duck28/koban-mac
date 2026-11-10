@@ -237,7 +237,12 @@ extension LedgerState {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
-        settings = try c.decode(AppSettings.self, forKey: .settings)
+        var decodedSettings = try c.decode(AppSettings.self, forKey: .settings)
+        // Out-of-range values from an imported/synced ledger are used as array indexes
+        // (e.g. MonthNames.long[activeMonth - 1]) and would crash the app on every launch.
+        decodedSettings.activeMonth = min(12, max(1, decodedSettings.activeMonth))
+        decodedSettings.activeYear = min(9999, max(1900, decodedSettings.activeYear))
+        settings = decodedSettings
         groups = try c.decodeIfPresent([CategoryGroup].self, forKey: .groups) ?? []
         categories = try c.decodeIfPresent([CategoryItem].self, forKey: .categories) ?? []
         monthlyBudgets = try c.decodeIfPresent([MonthlyBudgetEntry].self, forKey: .monthlyBudgets) ?? []

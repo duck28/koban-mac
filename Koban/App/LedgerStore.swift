@@ -93,6 +93,9 @@ final class LedgerStore {
     @ObservationIgnored private var lastPersistedState: LedgerState?
 
     var isReady: Bool { phase == .ready }
+    /// Ready and not behind the app lock screen: required for every command that reads, exports,
+    /// imports or changes ledger data (menu items stay reachable while UnlockView is shown).
+    var isUnlockedAndReady: Bool { isReady && !isAppLocked }
     var canLock: Bool { isReady && hasCustomPassphrase }
     var databaseURL: URL { KobanPaths.activeDatabaseURL }
 

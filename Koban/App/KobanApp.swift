@@ -36,26 +36,26 @@ struct KobanCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("Add Entry") { store.openQuickAdd() }
                 .keyboardShortcut("n", modifiers: .command)
-                .disabled(!store.isReady)
+                .disabled(!store.isUnlockedAndReady)
         }
         CommandGroup(after: .newItem) {
             Button("Import Data…") { store.openImport() }
                 .keyboardShortcut("i", modifiers: .command)
-                .disabled(!store.isReady)
+                .disabled(!store.isUnlockedAndReady)
             Menu("Export") {
                 Button("Excel Workbook (.xlsx)…") { store.exportExcel() }
                 Button("Monthly Budget CSV…") { store.exportBudgetCSV() }
                 Button("Transactions & Tax CSV…") { store.exportTransactionsCSV() }
             }
-            .disabled(!store.isReady)
+            .disabled(!store.isUnlockedAndReady)
             Divider()
             Button("Re-run Setup / Change Mode…") { store.openSetupWizard() }
-                .disabled(!store.isReady)
+                .disabled(!store.isUnlockedAndReady)
         }
         CommandGroup(replacing: .saveItem) {
             Button("Backup Encrypted DB Now") { store.manualBackup() }
                 .keyboardShortcut("s", modifiers: .command)
-                .disabled(!store.isReady)
+                .disabled(!store.isUnlockedAndReady)
         }
 
         CommandGroup(before: .sidebar) {
@@ -74,21 +74,24 @@ struct KobanCommands: Commands {
         CommandMenu("Ledger") {
             Button("Previous Month") { store.shiftMonth(by: -1) }
                 .keyboardShortcut("[", modifiers: .command)
+                .disabled(!store.isUnlockedAndReady)
             Button("Next Month") { store.shiftMonth(by: 1) }
                 .keyboardShortcut("]", modifiers: .command)
+                .disabled(!store.isUnlockedAndReady)
 
             Divider()
 
             ForEach(Array(ActiveWorkspace.allCases.enumerated()), id: \.element) { idx, ws in
                 Button(ws.title) { store.setWorkspace(ws) }
                     .keyboardShortcut(KeyEquivalent(Character(String(idx + 1))), modifiers: [.command, .option])
+                    .disabled(!store.isUnlockedAndReady)
             }
 
             Divider()
 
             Button("Lock Vault") { store.lockVault() }
                 .keyboardShortcut("l", modifiers: .command)
-                .disabled(!store.isReady)
+                .disabled(!store.isUnlockedAndReady)
         }
     }
 }

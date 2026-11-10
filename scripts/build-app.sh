@@ -52,5 +52,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 
-codesign --force --sign - "$APP" >/dev/null 2>&1
+# Hardened runtime even for the ad-hoc signature: without it, any process running as the user can
+# inject code into Koban (DYLD_INSERT_LIBRARIES) and read the vault secret it keeps in the keychain.
+codesign --force --options runtime --sign - "$APP"
+codesign --verify --strict "$APP"
 echo "Built $APP"
