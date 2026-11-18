@@ -61,12 +61,12 @@ struct AccountsView: View {
             if newMode == nil { newMode = store.state.settings.activeWorkspace == .freelancer ? .freelancer : .home }
             resetTransferSelection(netWorth)
         }
-        .alert("Remove Account", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+        .alert(L10n.t("common.remove"), isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                presenting: pendingDelete) { acc in
-            Button("Remove", role: .destructive) { store.deleteAccount(acc.id) }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.t("common.remove"), role: .destructive) { store.deleteAccount(acc.id) }
+            Button(L10n.t("common.cancel"), role: .cancel) {}
         } message: { acc in
-            Text("Are you sure you want to remove account \"\(acc.name)\"? Linked transactions will be kept as unassigned.")
+            Text("Are you sure you want to remove account \"\(L10n.accountName(acc))\"? Linked transactions will be kept as unassigned.")
         }
         .onReceive(NotificationCenter.default.publisher(for: .kobanDebugAction)) { note in
             switch note.userInfo?["name"] as? String {
@@ -86,13 +86,13 @@ struct AccountsView: View {
     private func header(_ netWorth: NetWorthSummaryMetrics) -> some View {
         let title = VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
-                Text("MULTI-ACCOUNT TREASURY & BALANCE SHEET")
+                Text(L10n.t("accounts.eyebrow").uppercased())
                     .font(.zen(11, .medium)).tracking(1.54).foregroundStyle(Zen.ink3)
                 Text("·").font(.zen(11)).foregroundStyle(Zen.ink3)
-                Text("\(netWorth.accounts.count) Active Account\(netWorth.accounts.count == 1 ? "" : "s")")
+                Text(L10n.tf("accounts.activeCount", ["count": netWorth.accounts.count]))
                     .font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
             }
-            Text("Accounts & Comprehensive Net Worth Tracker")
+            Text(L10n.t("accounts.title"))
                 .font(.zen(20, .medium)).foregroundStyle(Zen.ink)
         }
         let buttons = HStack(spacing: 8) {
@@ -101,11 +101,10 @@ struct AccountsView: View {
             } label: {
                 HStack(spacing: 6) {
                     ZIcon("camera", size: 14).foregroundStyle(Zen.indigo)
-                    Text("Snapshot \(monthKey)")
+                    Text(L10n.tf("accounts.snapshotBtn", ["month": monthKey]))
                 }
             }
             .buttonStyle(.zenOutline)
-            .help("Record Net Worth snapshot for \(monthKey)")
 
             if netWorth.accounts.count >= 2 {
                 Button {
@@ -113,7 +112,7 @@ struct AccountsView: View {
                 } label: {
                     HStack(spacing: 6) {
                         ZIcon("arrow.left.arrow.right", size: 14).foregroundStyle(Zen.positive)
-                        Text("Transfer Funds")
+                        Text(L10n.t("accounts.transferBtn"))
                     }
                 }
                 .buttonStyle(.zen(.outline, active: true))
@@ -125,7 +124,7 @@ struct AccountsView: View {
             } label: {
                 HStack(spacing: 6) {
                     ZIcon("plus", size: 14)
-                    Text("Add Account").fontWeight(.medium)
+                    Text(L10n.t("accounts.addBtn")).fontWeight(.medium)
                 }
             }
             .buttonStyle(.zen(.ink, padding: 14))
@@ -143,26 +142,26 @@ struct AccountsView: View {
 
     private func heroStrip(_ nw: NetWorthSummaryMetrics) -> some View {
         AccGrid(columns: bp.lg ? 5 : (bp.sm ? 2 : 1), hSpacing: 14, vSpacing: 14) {
-            heroCard(title: "Total Net Worth", titleColor: Zen.ink, titleWeight: .medium, icon: "sparkles",
+            heroCard(title: L10n.t("accounts.totalNetWorth"), titleColor: Zen.ink, titleWeight: .medium, icon: "sparkles",
                      iconColor: Zen.positive, amount: nw.netWorth, amountSize: 20,
                      amountColor: nw.netWorth >= 0 ? Zen.positive : Zen.accent,
-                     left: "Assets: \(KobanFormat.currency(nw.totalAssets, code: currency))",
-                     right: Text("Debt: \(AccountsJS.fixed(nw.debtToAssetRatioPct, 1))%"), highlighted: true)
-            heroCard(title: "Liquid Assets (Bank & Cash)", icon: "building.columns", iconColor: Zen.positive,
+                     left: L10n.tf("accounts.assetsLabel", ["amount": KobanFormat.currency(nw.totalAssets, code: currency)]),
+                     right: Text(L10n.tf("accounts.debtLabel", ["pct": AccountsJS.fixed(nw.debtToAssetRatioPct, 1)])), highlighted: true)
+            heroCard(title: L10n.t("accounts.liquidAssets"), icon: "building.columns", iconColor: Zen.positive,
                      amount: nw.liquidAssets,
-                     left: "\(AccountsJS.fixed(nw.liquidSharePct, 1))% of assets",
+                     left: L10n.tf("accounts.ofAssets", ["pct": AccountsJS.fixed(nw.liquidSharePct, 1)]),
                      right: nw.liquidRunwayMonths > 0
-                        ? Text("\(AccountsJS.fixed(nw.liquidRunwayMonths, 1)) mo runway").fontWeight(.medium).foregroundColor(Zen.positive)
+                        ? Text(L10n.tf("accounts.moRunway", ["months": AccountsJS.fixed(nw.liquidRunwayMonths, 1)])).fontWeight(.medium).foregroundColor(Zen.positive)
                         : nil)
-            heroCard(title: "Retirement & Pension", icon: "shield", iconColor: Color(hexString: "#8a6fb0"),
-                     amount: nw.retirementAssets, left: "Pillar 2 / 3a / Pension",
-                     right: Text("\(AccountsJS.fixed(nw.retirementSharePct, 1))% of assets"))
-            heroCard(title: "Investments & Fixed Assets", icon: "chart.line.uptrend.xyaxis", iconColor: Zen.indigo,
-                     amount: nw.investmentAssets + nw.fixedAssets, left: "ETFs, Crypto & Equity",
-                     right: Text("\(AccountsJS.fixed(nw.investmentSharePct + nw.fixedAssetSharePct, 1))% of assets"))
-            heroCard(title: "Liabilities & Debt", icon: "creditcard", iconColor: Zen.accent,
-                     amount: nw.totalLiabilities, amountColor: Zen.accent, left: "Cards, Loans & Mortgages",
-                     right: Text("Subtracted"))
+            heroCard(title: L10n.t("accounts.retirementPension"), icon: "shield", iconColor: Color(hexString: "#8a6fb0"),
+                     amount: nw.retirementAssets, left: L10n.t("accounts.pillarSummary"),
+                     right: Text(L10n.tf("accounts.ofAssets", ["pct": AccountsJS.fixed(nw.retirementSharePct, 1)])))
+            heroCard(title: L10n.t("accounts.investmentsFixed"), icon: "chart.line.uptrend.xyaxis", iconColor: Zen.indigo,
+                     amount: nw.investmentAssets + nw.fixedAssets, left: L10n.t("accounts.etfEquity"),
+                     right: Text(L10n.tf("accounts.ofAssets", ["pct": AccountsJS.fixed(nw.investmentSharePct + nw.fixedAssetSharePct, 1)])))
+            heroCard(title: L10n.t("accounts.liabilitiesDebt"), icon: "creditcard", iconColor: Zen.accent,
+                     amount: nw.totalLiabilities, amountColor: Zen.accent, left: L10n.t("accounts.cardsLoans"),
+                     right: Text(L10n.t("accounts.subtracted")))
         }
     }
 
@@ -195,24 +194,24 @@ struct AccountsView: View {
 
     private var typeSections: [AccSelect<AccountType>.Section] {
         [
-            .init(title: "Liquid Bank & Cash Accounts", options: [
-                (.checking, "Bank Checking / Everyday Account"),
-                (.savings, "Bank Savings / High-Yield Account"),
-                (.businessBank, "Freelancer / Business Bank Account"),
-                (.taxReserve, "Tax & VAT Reserve Account"),
-                (.cash, "Cash / Digital Wallet"),
+            .init(title: L10n.t("accounts.groupLiquid"), options: [
+                (.checking, L10n.accountTypeLabel(.checking)),
+                (.savings, L10n.accountTypeLabel(.savings)),
+                (.businessBank, L10n.accountTypeLabel(.businessBank)),
+                (.taxReserve, L10n.accountTypeLabel(.taxReserve)),
+                (.cash, L10n.accountTypeLabel(.cash)),
             ]),
-            .init(title: "Retirement & Long-Term Wealth", options: [
-                (.retirement, "Retirement / Pension (Pillar 2 / 3a / 401k / IRA)"),
-                (.brokerage, "Brokerage / ETFs & Stocks"),
-                (.crypto, "Crypto & Digital Assets"),
-                (.realEstate, "Property / Real Estate Equity"),
+            .init(title: L10n.t("accounts.groupWealth"), options: [
+                (.retirement, L10n.accountTypeLabel(.retirement)),
+                (.brokerage, L10n.accountTypeLabel(.brokerage)),
+                (.crypto, L10n.accountTypeLabel(.crypto)),
+                (.realEstate, L10n.accountTypeLabel(.realEstate)),
             ]),
-            .init(title: "Liabilities & Debt", options: [
-                (.creditCard, "Credit Card Balance"),
-                (.loan, "Loan / Mortgage / Debt"),
+            .init(title: L10n.t("accounts.groupDebt"), options: [
+                (.creditCard, L10n.accountTypeLabel(.creditCard)),
+                (.loan, L10n.accountTypeLabel(.loan)),
             ]),
-            .init(title: "Custom", options: [(.custom, "Custom Account Type…")]),
+            .init(title: L10n.t("accounts.groupCustom"), options: [(.custom, L10n.accountTypeLabel(.custom))]),
         ]
     }
 
@@ -220,61 +219,61 @@ struct AccountsView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Create Financial Account").font(.zen(14, .medium)).foregroundStyle(Zen.ink)
-                    Text("Add a bank account, retirement fund, investment portfolio, credit card, loan, or define a custom account type.")
+                    Text(L10n.t("accounts.createTitle")).font(.zen(14, .medium)).foregroundStyle(Zen.ink)
+                    Text(L10n.t("accounts.createDesc"))
                         .font(.zen(11)).foregroundStyle(Zen.ink2)
                 }
                 Spacer(minLength: 8)
-                AccTextButton(title: "Close") { showAddForm = false }
+                AccTextButton(title: L10n.t("common.close")) { showAddForm = false }
             }
             .padding(.bottom, 8)
             .accBottomHairline()
 
             AccGrid(columns: bp.lg ? 4 : (bp.sm ? 2 : 1), hSpacing: 14, vSpacing: 14) {
-                AccLabeledField("Account Type") {
+                AccLabeledField(L10n.t("accounts.accountTypeLabel")) {
                     AccSelect(sections: typeSections, selection: Binding(get: { newType }, set: { handleTypeSelect($0) }))
                 }
                 if newType == .custom {
-                    AccLabeledField("Custom Type Label") {
+                    AccLabeledField(L10n.t("accounts.customTypeLabel")) {
                         AccTextField(placeholder: "e.g. Precious Metals, Pillar 3a, Co-op Shares",
                                      text: $newCustomTypeLabel, onSubmit: createAccount)
                     }
                 }
-                AccLabeledField("Net Worth Classification") {
+                AccLabeledField(L10n.t("accounts.classificationLabel")) {
                     AccSelect(options: [
-                        (.liquid, "Liquid Asset (Bank / Cash)"),
-                        (.retirement, "Retirement / Pension Asset"),
-                        (.investment, "Investment / Market Asset"),
-                        (.fixedAsset, "Fixed / Real Estate Asset"),
-                        (.liability, "Liability / Debt (Subtracted)"),
+                        (.liquid, L10n.accountClassOpt(.liquid)),
+                        (.retirement, L10n.accountClassOpt(.retirement)),
+                        (.investment, L10n.accountClassOpt(.investment)),
+                        (.fixedAsset, L10n.accountClassOpt(.fixedAsset)),
+                        (.liability, L10n.accountClassOpt(.liability)),
                     ], selection: $newClassification)
                 }
-                AccLabeledField("Account Name") {
+                AccLabeledField(L10n.t("accounts.accountNameLabel")) {
                     AccTextField(placeholder: "e.g. UBS Personal Checking, VIAC Pillar 3a", text: $newName,
                                  onSubmit: createAccount)
                 }
-                AccLabeledField("Bank / Institution (optional)") {
+                AccLabeledField(L10n.t("accounts.institutionLabel")) {
                     AccTextField(placeholder: "e.g. ZKB, PostFinance, Interactive Brokers", text: $newInstitution,
                                  onSubmit: createAccount)
                 }
-                AccLabeledField("Account / IBAN Ref (optional)") {
+                AccLabeledField(L10n.t("accounts.ibanLabel")) {
                     AccTextField(placeholder: "e.g. CH93 •••• 4820", text: $newMaskedNumber, onSubmit: createAccount)
                 }
-                AccLabeledField("Current / Opening Balance (\(currency))") {
+                AccLabeledField(L10n.tf("accounts.openingBalanceLabel", ["currency": currency])) {
                     AccTextField(placeholder: "0.00", text: $newBalance, monospacedDigits: true, onSubmit: createAccount)
                 }
-                AccLabeledField("Ledger Assignment") {
-                    AccSelect(options: [(LedgerMode.home, "Home / Personal"), (.freelancer, "Freelancer / Business")],
+                AccLabeledField(L10n.t("accounts.ledgerAssignmentLabel")) {
+                    AccSelect(options: [(LedgerMode.home, L10n.t("accounts.homePersonalOpt")), (.freelancer, L10n.t("accounts.freelancerBizOpt"))],
                               selection: Binding(get: { newMode ?? .home }, set: { newMode = $0 }))
                 }
             }
 
             HStack(alignment: .center, spacing: 16) {
                 FlowLayout(spacing: 16) {
-                    AccCheckbox(isOn: newAutoTrack, label: "Automatically adjust balance from logged transactions") {
+                    AccCheckbox(isOn: newAutoTrack, label: L10n.t("accounts.autoTrackLabel")) {
                         newAutoTrack.toggle()
                     }
-                    AccCheckbox(isOn: newIncludeInNw, label: "Include in Net Worth total") { newIncludeInNw.toggle() }
+                    AccCheckbox(isOn: newIncludeInNw, label: L10n.t("accounts.includeNwLabel")) { newIncludeInNw.toggle() }
                     HStack(spacing: 4) {
                         ForEach(Array(ZenGroupPalette.colors.prefix(7)), id: \.self) { swatch in
                             Button { newColor = swatch } label: {
@@ -294,7 +293,7 @@ struct AccountsView: View {
                     }
                 }
                 Spacer(minLength: 8)
-                Button("Create Account", action: createAccount)
+                Button(L10n.t("accounts.createBtn"), action: createAccount)
                     .buttonStyle(.zen(.ink, height: 36, padding: 16))
                     .fontWeight(.medium)
             }
@@ -360,32 +359,32 @@ struct AccountsView: View {
 
     private func transferForm(_ netWorth: NetWorthSummaryMetrics) -> some View {
         let options = netWorth.accounts.map {
-            ($0.account.id, "\($0.account.name) (\(KobanFormat.currency($0.liveBalance, code: currency)))")
+            ($0.account.id, "\(L10n.accountName($0.account)) (\(KobanFormat.currency($0.liveBalance, code: currency)))")
         }
         return VStack(alignment: .leading, spacing: 16) {
             HStack {
                 HStack(spacing: 8) {
                     ZIcon("arrow.left.arrow.right", size: 16).foregroundStyle(Zen.positive)
-                    Text("Transfer Funds Between Accounts").font(.zen(14, .medium)).foregroundStyle(Zen.ink)
+                    Text(L10n.t("accounts.transferTitle")).font(.zen(14, .medium)).foregroundStyle(Zen.ink)
                 }
                 Spacer()
-                AccTextButton(title: "Close") { showTransferForm = false }
+                AccTextButton(title: L10n.t("common.close")) { showTransferForm = false }
             }
             .padding(.bottom, 8)
             .accBottomHairline()
 
             AccGrid(columns: bp.sm ? 5 : 1, hSpacing: 12, vSpacing: 12, alignment: .bottom) {
-                AccLabeledField("From Account") { AccSelect(options: options, selection: $fromAccId) }
-                AccLabeledField("To Account") { AccSelect(options: options, selection: $toAccId) }
-                AccLabeledField("Amount (\(currency))") {
+                AccLabeledField(L10n.t("accounts.fromAccount")) { AccSelect(options: options, selection: $fromAccId) }
+                AccLabeledField(L10n.t("accounts.toAccount")) { AccSelect(options: options, selection: $toAccId) }
+                AccLabeledField("\(L10n.t("finance.amount")) (\(currency))") {
                     AccTextField(placeholder: "0.00", text: $transferAmount, monospacedDigits: true, onSubmit: submitTransfer)
                 }
-                AccLabeledField("Note / Reference") {
+                AccLabeledField(L10n.t("accounts.noteRef")) {
                     AccTextField(placeholder: "e.g. Monthly Savings / Pillar 3a Transfer", text: $transferNote,
                                  onSubmit: submitTransfer)
                 }
                 Button(action: submitTransfer) {
-                    Text("Execute Transfer").fontWeight(.medium).frame(maxWidth: .infinity)
+                    Text(L10n.t("accounts.executeTransferBtn")).fontWeight(.medium).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.zen(.ink, height: 36, padding: 16))
             }
@@ -409,12 +408,12 @@ struct AccountsView: View {
 
     private func accountsSection(_ nw: NetWorthSummaryMetrics) -> some View {
         let tabs: [(AccountLiquidityClass?, String)] = [
-            (nil, "All Accounts (\(nw.accounts.count))"),
-            (.liquid, "Liquid / Bank (\(nw.accountCount(.liquid)))"),
-            (.retirement, "Retirement (\(nw.accountCount(.retirement)))"),
-            (.investment, "Investments (\(nw.accountCount(.investment)))"),
-            (.fixedAsset, "Fixed Assets (\(nw.accountCount(.fixedAsset)))"),
-            (.liability, "Liabilities (\(nw.accountCount(.liability)))"),
+            (nil, L10n.tf("accounts.filterAll", ["count": nw.accounts.count])),
+            (.liquid, L10n.tf("accounts.filterLiquid", ["count": nw.accountCount(.liquid)])),
+            (.retirement, L10n.tf("accounts.filterRetirement", ["count": nw.accountCount(.retirement)])),
+            (.investment, L10n.tf("accounts.filterInvestments", ["count": nw.accountCount(.investment)])),
+            (.fixedAsset, L10n.tf("accounts.filterFixed", ["count": nw.accountCount(.fixedAsset)])),
+            (.liability, L10n.tf("accounts.filterLiabilities", ["count": nw.accountCount(.liability)])),
         ]
         let filtered = nw.accounts.filter { filterBucket == nil || $0.account.classification == filterBucket }
         let tabButtons = ForEach(tabs, id: \.1) { id, label in
@@ -423,7 +422,7 @@ struct AccountsView: View {
             }
             .buttonStyle(.zen(filterBucket == id ? .ink : .outline, height: 28, padding: 12))
         }
-        let hint = Text("Click any balance to update or reconcile directly").font(.zen(11)).foregroundStyle(Zen.ink3)
+        let hint = Text(L10n.t("accounts.clickToUpdateHint")).font(.zen(11)).foregroundStyle(Zen.ink3)
 
         return VStack(alignment: .leading, spacing: 12) {
             ViewThatFits(in: .horizontal) {
@@ -474,8 +473,8 @@ struct AccountsView: View {
     private var emptyAccounts: some View {
         VStack(spacing: 8) {
             ZIcon("wallet.bifold", size: 24).foregroundStyle(Zen.ink3)
-            Text("No accounts in this category yet").font(.zen(14, .medium)).foregroundStyle(Zen.ink)
-            Text("Add your bank checking & savings accounts, Pillar 2 / 3a retirement accounts, investment portfolios, or custom accounts to track your complete Net Worth.")
+            Text(L10n.t("accounts.emptyTitle")).font(.zen(14, .medium)).foregroundStyle(Zen.ink)
+            Text(L10n.t("accounts.emptyDesc"))
                 .font(.zen(12)).foregroundStyle(Zen.ink2)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 448)
@@ -485,7 +484,7 @@ struct AccountsView: View {
             } label: {
                 HStack(spacing: 6) {
                     ZIcon("plus", size: 14)
-                    Text("Add First Account").fontWeight(.medium)
+                    Text(L10n.t("accounts.addFirstBtn")).fontWeight(.medium)
                 }
             }
             .buttonStyle(.zen(.ink, padding: 14))
@@ -515,10 +514,10 @@ struct AccountsView: View {
 
     private func allocationCard(_ nw: NetWorthSummaryMetrics) -> some View {
         let segments: [(AccountLiquidityClass, Double, String)] = [
-            (.liquid, nw.liquidSharePct, "Liquid Assets"),
-            (.retirement, nw.retirementSharePct, "Retirement"),
-            (.investment, nw.investmentSharePct, "Investments"),
-            (.fixedAsset, nw.fixedAssetSharePct, "Fixed Assets"),
+            (.liquid, nw.liquidSharePct, L10n.accountClassLabel(.liquid)),
+            (.retirement, nw.retirementSharePct, L10n.accountClassLabel(.retirement)),
+            (.investment, nw.investmentSharePct, L10n.accountClassLabel(.investment)),
+            (.fixedAsset, nw.fixedAssetSharePct, L10n.accountClassLabel(.fixedAsset)),
         ]
         let rows: [(AccountLiquidityClass, Double, Double)] = [
             (.liquid, nw.liquidAssets, nw.liquidSharePct),
@@ -529,8 +528,8 @@ struct AccountsView: View {
         ]
         return VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Asset Allocation & Wealth Structure").font(.zen(14, .medium)).foregroundStyle(Zen.ink)
-                Text("Distribution across liquid bank reserves, retirement funds, and investments")
+                Text(L10n.t("accounts.allocationTitle")).font(.zen(14, .medium)).foregroundStyle(Zen.ink)
+                Text(L10n.t("accounts.allocationDesc"))
                     .font(.zen(12)).foregroundStyle(Zen.ink2)
             }
 
@@ -563,7 +562,7 @@ struct AccountsView: View {
                     HStack {
                         HStack(spacing: 8) {
                             Circle().fill(Color(hexString: meta.color)).frame(width: 10, height: 10)
-                            Text(meta.label).foregroundStyle(Zen.ink).lineLimit(1)
+                            Text(L10n.accountClassLabel(cls)).foregroundStyle(Zen.ink).lineLimit(1)
                         }
                         Spacer(minLength: 8)
                         HStack(spacing: 12) {
@@ -591,13 +590,13 @@ struct AccountsView: View {
         let maxAbs = nw.maxHistoryAbs
         let snapshots = store.state.netWorthSnapshots.sorted { $0.monthKey > $1.monthKey }
         let titleBlock = VStack(alignment: .leading, spacing: 2) {
-            Text("12-Month Net Worth Trajectory").font(.zen(14, .medium)).foregroundStyle(Zen.ink)
-            Text("Combines recorded monthly snapshots with cumulative cashflow progression")
+            Text(L10n.t("accounts.trajectoryTitle")).font(.zen(14, .medium)).foregroundStyle(Zen.ink)
+            Text(L10n.t("accounts.trajectoryDesc"))
                 .font(.zen(12)).foregroundStyle(Zen.ink2)
         }
         let legend = HStack(spacing: 12) {
-            legendItem(Zen.positive, "Net Worth")
-            legendItem(Zen.indigo, "Recorded Snapshot")
+            legendItem(Zen.positive, L10n.t("finance.netWorth"))
+            legendItem(Zen.indigo, L10n.t("accounts.recordedSnapshot"))
         }
         .font(.zen(11)).foregroundStyle(Zen.ink2)
 
@@ -610,6 +609,8 @@ struct AccountsView: View {
             HStack(alignment: .bottom, spacing: 8) {
                 ForEach(nw.historySeries) { pt in
                     let isCurrent = pt.monthKey == monthKey
+                    let mIdx = Int(pt.monthKey.suffix(2))
+                    let shortLabel = mIdx.map { L10n.monthName($0, short: true) } ?? pt.monthLabel
                     let color = pt.hasExplicitSnapshot ? Zen.indigo : (pt.netWorth >= 0 ? Zen.positive : Zen.accent)
                     VStack(spacing: 6) {
                         ZStack(alignment: .bottom) {
@@ -621,14 +622,14 @@ struct AccountsView: View {
                                 .frame(height: 128 * pt.barHeightPct(maxAbs: maxAbs) / 100)
                         }
                         .frame(height: 128)
-                        Text(pt.monthLabel)
+                        Text(shortLabel)
                             .font(.zen(10, isCurrent ? .semibold : .regular))
                             .monospacedDigit()
                             .foregroundStyle(isCurrent ? Zen.ink : Zen.ink3)
                     }
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
-                    .help("\(pt.monthLabel) (\(pt.monthKey))\nNet Worth: \(KobanFormat.currency(pt.netWorth, code: currency))\nLiquid: \(KobanFormat.currency(pt.liquidAssets, code: currency))\nRetirement: \(KobanFormat.currency(pt.retirementAssets, code: currency))")
+                    .help("\(shortLabel) (\(pt.monthKey))\n\(L10n.t("finance.netWorth")): \(KobanFormat.currency(pt.netWorth, code: currency))\n\(L10n.t("accounts.liquidPrefix")) \(KobanFormat.currency(pt.liquidAssets, code: currency))\n\(L10n.t("accounts.retirementPrefix")) \(KobanFormat.currency(pt.retirementAssets, code: currency))")
                 }
             }
             .padding(.top, 16)
@@ -638,7 +639,7 @@ struct AccountsView: View {
 
             if !snapshots.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("RECORDED MONTHLY BALANCE SHEET SNAPSHOTS (\(snapshots.count))")
+                    Text(L10n.tf("accounts.recordedSnapshotsTitle", ["count": snapshots.count]).uppercased())
                         .font(.zen(11, .medium)).tracking(0.55).foregroundStyle(Zen.ink3)
                     let list = VStack(spacing: 4) {
                         ForEach(snapshots) { snap in snapshotRow(snap) }
@@ -668,14 +669,14 @@ struct AccountsView: View {
         HStack {
             HStack(spacing: 8) {
                 Text(snap.monthKey).font(.system(size: 12, weight: .medium, design: .monospaced)).foregroundStyle(Zen.ink)
-                Text("Liquid: \(KobanFormat.currency(snap.liquidAssets, code: currency)) · Retirement: \(KobanFormat.currency(snap.retirementAssets, code: currency))")
+                Text("\(L10n.t("accounts.liquidPrefix")) \(KobanFormat.currency(snap.liquidAssets, code: currency)) · \(L10n.t("accounts.retirementPrefix")) \(KobanFormat.currency(snap.retirementAssets, code: currency))")
                     .font(.zen(11)).foregroundStyle(Zen.ink3).lineLimit(1)
             }
             Spacer(minLength: 8)
             HStack(spacing: 10) {
                 Text(KobanFormat.currency(snap.netWorth, code: currency))
                     .font(.zen(12, .semibold)).foregroundStyle(Zen.positive)
-                AccHoverIcon(icon: "trash", size: 12, help: "Remove snapshot") {
+                AccHoverIcon(icon: "trash", size: 12, help: L10n.t("common.remove")) {
                     store.deleteNetWorthSnapshot(snap.id)
                 }
             }
@@ -744,7 +745,7 @@ private struct AccountCard: View {
                     .frame(width: 32, height: 32)
                     .overlay { ZIcon(classIcon, size: 16, weight: .regular).foregroundStyle(.white) }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(account.name).font(.zen(14, .medium)).foregroundStyle(Zen.ink).lineLimit(1).truncationMode(.tail)
+                    Text(L10n.accountName(account)).font(.zen(14, .medium)).foregroundStyle(Zen.ink).lineLimit(1).truncationMode(.tail)
                     if account.institution?.isEmpty == false || account.accountNumberMasked?.isEmpty == false {
                         HStack(spacing: 6) {
                             if let inst = account.institution, !inst.isEmpty {
@@ -764,12 +765,12 @@ private struct AccountCard: View {
             }
             Spacer(minLength: 0)
             HStack(spacing: 4) {
-                Text(account.typeBadgeLabel)
+                Text((account.type == .custom && !(account.customTypeLabel?.isEmpty ?? true)) ? (account.customTypeLabel ?? "") : L10n.accountTypeShort(account.type))
                     .font(.zen(10, .medium)).foregroundStyle(Zen.ink2)
                     .padding(.horizontal, 8).padding(.vertical, 2)
                     .background(Zen.raised, in: RoundedRectangle(cornerRadius: 4))
                     .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Zen.line, lineWidth: 1))
-                Text(account.mode == .freelancer ? "BIZ" : "HOME")
+                Text(L10n.t(account.mode == .freelancer ? "accounts.badgeBiz" : "accounts.badgeHome").uppercased())
                     .font(.zen(10, .medium))
                     .foregroundStyle(account.mode == .freelancer ? Zen.indigo : Zen.ink3)
                     .padding(.horizontal, 6).padding(.vertical, 2)
@@ -782,7 +783,7 @@ private struct AccountCard: View {
 
     private var balance: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(isLiability ? "CURRENT DEBT BALANCE" : "CURRENT ACCOUNT BALANCE")
+            Text(L10n.t(isLiability ? "accounts.currentDebtBalance" : "accounts.currentAccountBalance").uppercased())
                 .font(.zen(10)).tracking(0.5).foregroundStyle(Zen.ink3)
             if isEditing {
                 BalanceEditor(initial: item.liveBalance, onCommit: onCommit, onCancel: onCancel)
@@ -798,7 +799,7 @@ private struct AccountCard: View {
                 }
                 .buttonStyle(.plain)
                 .onHover { balanceHover = $0 }
-                .help("Click to update or reconcile balance")
+                .help(L10n.t("accounts.clickToUpdateHint"))
             }
         }
     }
@@ -813,10 +814,10 @@ private struct AccountCard: View {
             }
             Spacer(minLength: 4)
             HStack(spacing: 8) {
-                AccCheckbox(isOn: account.includeInNetWorth, label: "NW", fontSize: 11, color: Zen.ink3,
+                AccCheckbox(isOn: account.includeInNetWorth, label: L10n.t("accounts.nwShort"), fontSize: 11, color: Zen.ink3,
                             hoverColor: Zen.ink2, gap: 4, toggle: onToggleNw)
-                    .help("Include this account in Net Worth calculation")
-                AccHoverIcon(icon: "trash", size: 14, padding: 4, hoverBackground: Zen.raised, help: "Delete Account",
+                    .help(L10n.t("accounts.includeNwLabel"))
+                AccHoverIcon(icon: "trash", size: 14, padding: 4, hoverBackground: Zen.raised, help: L10n.t("common.delete"),
                              action: onDelete)
             }
         }
@@ -835,7 +836,7 @@ private struct AutoTrackPill: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 ZIcon("arrow.clockwise", size: 10, weight: .regular)
-                Text(isAuto ? "Auto-Tx" : "Manual").font(.zen(11))
+                Text(L10n.t(isAuto ? "accounts.autoTxBadge" : "accounts.manualBadge")).font(.zen(11))
             }
             .foregroundStyle(isAuto ? Zen.positive : (hovering ? Zen.ink2 : Zen.ink3))
             .padding(.horizontal, 8).padding(.vertical, 2)
@@ -845,8 +846,7 @@ private struct AutoTrackPill: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(isAuto ? "Balance auto-updates from linked transactions (click to switch to manual valuation)"
-                     : "Manual valuation mode (click to auto-track from transactions)")
+        .help(L10n.t("accounts.autoTrackLabel"))
     }
 }
 
@@ -860,7 +860,7 @@ private struct TxCountButton: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 ZIcon("receipt", size: 12).foregroundStyle(Zen.ink3)
-                Text("\(count) tx (\(delta >= 0 ? "+" : "")\(KobanFormat.number(delta)))")
+                Text("\(L10n.tf("worksheet.txCountSuffix", ["count": count])) (\(delta >= 0 ? "+" : "")\(KobanFormat.number(delta)))")
                     .font(.zen(11)).monospacedDigit()
                     .foregroundStyle(hovering ? Zen.ink : Zen.ink2)
             }
@@ -868,7 +868,7 @@ private struct TxCountButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help("View transactions for this account")
+        .help(L10n.tf("worksheet.txCountTip", ["count": count]))
     }
 }
 

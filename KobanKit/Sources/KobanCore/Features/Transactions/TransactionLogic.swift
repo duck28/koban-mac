@@ -121,10 +121,17 @@ extension LedgerState {
             if !trimmed.isEmpty {
                 let cat = catMap[t.categoryId]
                 let catName = cat?.name.lowercased() ?? ""
-                let grpName = grpMap[cat?.groupId ?? ""]?.name.lowercased() ?? ""
-                let accName = t.accountId.flatMap { accMap[$0]?.name.lowercased() } ?? ""
+                let catLoc = cat.map { L10n.categoryName($0).lowercased() } ?? ""
+                let grp = grpMap[cat?.groupId ?? ""]
+                let grpName = grp?.name.lowercased() ?? ""
+                let grpLoc = grp.map { L10n.groupName($0).lowercased() } ?? ""
+                let acc = t.accountId.flatMap { accMap[$0] }
+                let accName = acc?.name.lowercased() ?? ""
+                let accLoc = acc.map { L10n.accountName($0).lowercased() } ?? ""
                 return t.description.lowercased().contains(q)
-                    || catName.contains(q) || grpName.contains(q) || accName.contains(q)
+                    || catName.contains(q) || catLoc.contains(q)
+                    || grpName.contains(q) || grpLoc.contains(q)
+                    || accName.contains(q) || accLoc.contains(q)
                     || (t.client?.lowercased().contains(q) ?? false)
                     || (t.invoiceRef?.lowercased().contains(q) ?? false)
             }

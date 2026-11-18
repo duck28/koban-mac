@@ -17,9 +17,9 @@ struct BackupsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Encrypted Database, Backups & Data Import / Export")
+                    Text(L10n.t("backups.title"))
                         .font(.zen(20)).tracking(-0.3).foregroundStyle(Zen.ink)
-                    Text("All database records and automatic backups are encrypted at rest with authenticated AES-256-GCM.")
+                    Text(L10n.t("backups.subtitle"))
                         .font(.zen(12)).foregroundStyle(Zen.ink2)
                 }
 
@@ -70,12 +70,12 @@ struct BackupsView: View {
             ZIcon("checkmark.shield", size: 20).foregroundStyle(Zen.positive)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
-                    Text("AES-256-GCM Encrypted SQLite Vault").font(.zen(14, .medium)).foregroundStyle(Zen.ink)
-                    DataIOPill(text: "\(info?.cipher ?? "AES-256-GCM") · \(info?.encryptedRecords ?? 0) Encrypted Records",
+                    Text(L10n.t("backups.vaultTitle")).font(.zen(14, .medium)).foregroundStyle(Zen.ink)
+                    DataIOPill(text: L10n.tf("backups.encryptedRecordsBadge", ["cipher": info?.cipher ?? "AES-256-GCM", "count": info?.encryptedRecords ?? 0]),
                                foreground: Zen.positive, background: Zen.positive.opacity(0.15))
                 }
-                (Text("Primary DB: ").foregroundColor(Zen.ink3)
-                 + dataIOCode(info?.dbPath ?? "Loading…", color: Zen.ink2)
+                (Text("\(L10n.t("backups.primaryDbLabel")) ").foregroundColor(Zen.ink3)
+                 + dataIOCode(info?.dbPath ?? L10n.t("backups.loading"), color: Zen.ink2)
                  + Text(" (\(DataIOStorage.formatBytes(info?.dbSize ?? 0)))").foregroundColor(Zen.ink3))
                     .font(.zen(11))
                     .lineLimit(1)
@@ -90,16 +90,16 @@ struct BackupsView: View {
         HStack(spacing: 8) {
             if let path = info?.dbPath, !path.isEmpty {
                 Button { DataIOPanels.reveal(path) } label: {
-                    HStack(spacing: 6) { ZIcon("arrow.up.right.square", size: 14); Text("Locate Encrypted DB") }
+                    HStack(spacing: 6) { ZIcon("arrow.up.right.square", size: 14); Text(L10n.t("backups.locateDbBtn")) }
                 }
                 .buttonStyle(DataIORaisedButtonStyle(mutedText: true))
-                .help("Reveal the encrypted database in Finder")
+                .help(L10n.t("sidebar.revealBackupMac"))
             }
             Button {
                 store.manualBackup()
                 center.refresh(store)
             } label: {
-                HStack(spacing: 6) { ZIcon("cylinder.split.1x2", size: 14); Text("Backup Now") }
+                HStack(spacing: 6) { ZIcon("cylinder.split.1x2", size: 14); Text(L10n.t("backups.backupNowBtn")) }
             }
             .buttonStyle(DataIOInkButtonStyle(padding: 14))
         }
@@ -112,24 +112,22 @@ struct BackupsView: View {
             HStack(alignment: .center, spacing: 10) {
                 ZIcon("lock", size: 16).foregroundStyle(Zen.indigo)
                 VStack(alignment: .leading, spacing: 1) {
-                    (Text("Vault Encryption Key Mode: ").foregroundColor(Zen.ink)
-                     + Text(custom ? "Custom Passphrase Active (salted SHA-256 KDF + AES-256-GCM)" : "Built-in Default Key (AES-256-GCM)")
+                    (Text("\(L10n.t("backups.keyModeLabel")) ").foregroundColor(Zen.ink)
+                     + Text(L10n.t(custom ? "backups.keyModeCustom" : "backups.keyModeDefault"))
                         .foregroundColor(Zen.positive))
                         .font(.zen(12, .medium))
-                    Text(custom
-                         ? "The ledger is stored as authenticated AES-256-GCM ciphertext, keyed by your passphrase."
-                         : "The default key is built into the app: anyone with a copy of koban.db or a backup can decrypt it. Set a custom passphrase to protect your data.")
+                    Text(L10n.t(custom ? "backups.keyModeCustomDesc" : "backups.keyModeDefaultDesc"))
                         .font(.zen(11)).foregroundStyle(Zen.ink3)
                 }
             }
             .frame(minWidth: 240, maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 8) {
-                DataIOTextField(placeholder: "Set or change custom passphrase (leave empty for default)…",
+                DataIOTextField(placeholder: L10n.t("backups.passphrasePlaceholder"),
                                 text: $newPassphrase, secure: true, height: 32, background: Zen.surface, trailingPadding: 10)
                     .frame(width: 256)
                     .onSubmit(applyPassphrase)
-                Button(newPassphrase.trimmingCharacters(in: .whitespaces).isEmpty ? "Use Default Key" : "Set Passphrase",
+                Button(L10n.t(newPassphrase.trimmingCharacters(in: .whitespaces).isEmpty ? "backups.useDefaultKeyBtn" : "backups.setPassphraseBtn"),
                        action: applyPassphrase)
                     .buttonStyle(DataIORaisedButtonStyle())
             }
@@ -149,32 +147,32 @@ struct BackupsView: View {
     private func backupFolderRow(settings: AppSettings) -> some View {
         let wide = viewport >= 768
         let folder = VStack(alignment: .leading, spacing: 4) {
-            Text("User-Chosen Automatic Backup Folder Path").font(.zen(12)).foregroundStyle(Zen.ink2)
+            Text(L10n.t("backups.folderLabel")).font(.zen(12)).foregroundStyle(Zen.ink2)
             HStack(spacing: 8) {
-                DataIOTextField(placeholder: "Choose a folder path for automatic encrypted SQLite (.db) backups…",
+                DataIOTextField(placeholder: L10n.t("backups.folderPlaceholder"),
                                 text: Binding(get: { store.state.settings.backupDir },
                                               set: { v in store.applySettingsChange { $0.backupDir = v } }),
                                 background: Zen.raised)
                 Button {
-                    if let url = DataIOPanels.folder(title: "Select Automatic Backup Folder") {
+                    if let url = DataIOPanels.folder(title: L10n.t("backups.folderLabel")) {
                         store.applySettingsChange {
                             $0.backupDir = url.path
                             $0.autoBackup = true
                         }
                     }
                 } label: {
-                    HStack(spacing: 6) { ZIcon("folder", size: 14); Text("Browse…") }
+                    HStack(spacing: 6) { ZIcon("folder", size: 14); Text(L10n.t("settings.backups.browse")) }
                 }
                 .buttonStyle(DataIORaisedButtonStyle(height: 36))
                 if !settings.backupDir.isEmpty {
                     Button { DataIOPanels.reveal(settings.backupDir) } label: { ZIcon("arrow.up.right.square", size: 14) }
                         .buttonStyle(DataIORaisedButtonStyle(height: 36, padding: 10, mutedText: true))
-                        .help("Open Backup Folder in Finder")
+                        .help(L10n.t("sidebar.revealBackupMac"))
                 }
             }
         }
         let keep = VStack(alignment: .leading, spacing: 4) {
-            Text("Rolling Snapshots to Keep").font(.zen(12)).foregroundStyle(Zen.ink2)
+            Text(L10n.t("backups.keepSnapshotsLabel")).font(.zen(12)).foregroundStyle(Zen.ink2)
             TextField("", text: Binding(
                 get: { maxBackupsText.isEmpty ? String(settings.maxBackups > 0 ? settings.maxBackups : 20) : maxBackupsText },
                 set: { v in
@@ -194,7 +192,7 @@ struct BackupsView: View {
         }
         let auto = DataIOCheckbox(isOn: Binding(get: { store.state.settings.autoBackup },
                                                 set: { v in store.applySettingsChange { $0.autoBackup = v } })) {
-            Text("Auto-Backup").font(.zen(12)).foregroundStyle(Zen.ink)
+            Text(L10n.t("settings.backups.autoBackup")).font(.zen(12)).foregroundStyle(Zen.ink)
         }
         .frame(height: 36)
 
@@ -220,7 +218,7 @@ struct BackupsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Rectangle().fill(Zen.line.opacity(0.6)).frame(height: 1).padding(.bottom, 4)
             HStack {
-                Text("ENCRYPTED SNAPSHOTS IN BACKUP FOLDER (\(center.backups.count))")
+                Text(L10n.tf("backups.snapshotsListTitle", ["count": center.backups.count]).uppercased())
                     .font(.zen(11, .semibold)).tracking(0.6).foregroundStyle(Zen.ink3)
                 Spacer()
                 HStack(spacing: 8) {
@@ -230,20 +228,20 @@ struct BackupsView: View {
                             center.refresh(store)
                         }
                     } label: {
-                        HStack(spacing: 4) { ZIcon("arrow.counterclockwise", size: 12); Text("Restore from file…") }
+                        HStack(spacing: 4) { ZIcon("arrow.counterclockwise", size: 12); Text(L10n.t("backups.restoreFromFile")) }
                             .font(.zen(12)).foregroundStyle(Zen.indigo)
                     }
                     .buttonStyle(.plain)
-                    ZenMiniButton(icon: "arrow.clockwise", size: 14, help: "Refresh backup list") { center.refresh(store) }
+                    ZenMiniButton(icon: "arrow.clockwise", size: 14) { center.refresh(store) }
                 }
             }
 
             if center.backups.isEmpty {
                 Text(settings.backupDirIsForeign
-                     ? "The backup folder is a path from another device (e.g. Windows). Choose a folder on this Mac above."
+                     ? L10n.t("sidebar.foreignBackupMac")
                      : settings.backupDir.isEmpty
-                     ? "Select a backup folder above to enable automatic encrypted SQLite backups."
-                     : "No backup files in this folder yet. Click \"Backup Now\" to create your first encrypted snapshot.")
+                     ? L10n.t("backups.emptyNoDir")
+                     : L10n.t("backups.emptyDir"))
                     .font(.zen(12)).foregroundStyle(Zen.ink3)
                     .padding(.vertical, 12)
             } else {
@@ -279,23 +277,23 @@ struct BackupsView: View {
 
     private var exportsSection: some View {
         let cards: [ExportCard] = [
-            ExportCard(id: "import", icon: "square.and.arrow.up", tint: Zen.accent, title: "Import Data (.xlsx, .csv, .db)",
-                       detail: "Import a Monthly Budget sheet, bank/transaction CSV or Excel file, or restore an encrypted Koban SQLite database backup.",
-                       button: "Open Import Data Wizard…", emphasized: true) { store.openImport() },
-            ExportCard(id: "xlsx", icon: "tablecells", tint: Zen.positive, title: "Full Excel Workbook (.xlsx)",
-                       detail: "Multi-sheet Excel file containing the 2-column Monthly Budget sheet, Category Breakdown, 12-Month Overview, and Transactions.",
-                       button: "Export Excel Workbook (.xlsx)…") { store.exportExcel() },
-            ExportCard(id: "budgetcsv", icon: "arrow.down.doc", tint: Zen.indigo, title: "Monthly Budget CSV (.csv)",
-                       detail: "Exports the side-by-side 2-column Monthly Budget layout with UTF-8 BOM for direct opening in Microsoft Excel or Google Sheets.",
-                       button: "Export Monthly Budget (.csv)…") { store.exportBudgetCSV() },
-            ExportCard(id: "txcsv", icon: "arrow.down.doc", tint: Zen.accent, title: "Transactions & Tax CSV (.csv)",
-                       detail: "Complete transaction log with Freelancer client names, invoice numbers, VAT rates, and tax-deductible expense amounts.",
-                       button: "Export Transactions (.csv)…") { store.exportTransactionsCSV() },
+            ExportCard(id: "import", icon: "square.and.arrow.up", tint: Zen.accent, title: L10n.t("backups.importCardTitle"),
+                       detail: L10n.t("backups.importCardDesc"),
+                       button: L10n.t("backups.importCardBtn"), emphasized: true) { store.openImport() },
+            ExportCard(id: "xlsx", icon: "tablecells", tint: Zen.positive, title: L10n.t("backups.excelCardTitle"),
+                       detail: L10n.t("backups.excelCardDesc"),
+                       button: L10n.t("backups.excelCardBtn")) { store.exportExcel() },
+            ExportCard(id: "budgetcsv", icon: "arrow.down.doc", tint: Zen.indigo, title: L10n.t("backups.budgetCsvCardTitle"),
+                       detail: L10n.t("backups.budgetCsvCardDesc"),
+                       button: L10n.t("backups.budgetCsvCardBtn")) { store.exportBudgetCSV() },
+            ExportCard(id: "txcsv", icon: "arrow.down.doc", tint: Zen.accent, title: L10n.t("backups.txCsvCardTitle"),
+                       detail: L10n.t("backups.txCsvCardDesc"),
+                       button: L10n.t("backups.txCsvCardBtn")) { store.exportTransactionsCSV() },
         ]
         let columns = viewport >= 1024 ? 3 : (viewport >= 640 ? 2 : 1)
 
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Import Data & External Excel (.xlsx) / CSV (.csv) Exports").font(.zen(14, .medium)).foregroundStyle(Zen.ink)
+            Text(L10n.t("backups.exportsSectionTitle")).font(.zen(14, .medium)).foregroundStyle(Zen.ink)
             Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 16) {
                 switch columns {
                 case 3:
@@ -348,16 +346,16 @@ struct BackupsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     ZIcon("externaldrive", size: 16).foregroundStyle(Zen.ink2)
-                    Text("Export Encrypted SQLite Database (.db)").font(.zen(14, .medium)).foregroundStyle(Zen.ink)
+                    Text(L10n.t("backups.sqliteCardTitle")).font(.zen(14, .medium)).foregroundStyle(Zen.ink)
                 }
-                (Text("Save a standalone copy of your AES-256-GCM encrypted SQLite database (")
+                (Text(L10n.t("backups.sqliteCardDescPrefix"))
                  + dataIOCode("koban.db")
-                 + Text(") to any external drive or folder."))
+                 + Text(L10n.t("backups.sqliteCardDescSuffix")))
                     .font(.zen(12)).foregroundStyle(Zen.ink2).lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
-            Button("Export Encrypted SQLite (.db)…") {
+            Button(L10n.t("backups.sqliteCardBtn")) {
                 let stamp = ISO8601DateFormatter().string(from: Date()).prefix(10)
                 if let url = DataIOPanels.save(defaultName: "koban-encrypted-\(stamp).db", extensions: ["db"]) {
                     store.exportDatabaseCopy(to: url)
@@ -415,10 +413,10 @@ private struct BackupRow: View {
             }
             Spacer(minLength: 8)
             HStack(spacing: 8) {
-                Button("Reveal") { DataIOPanels.reveal(entry.url.path) }
+                Button(L10n.t("backups.revealBtn")) { DataIOPanels.reveal(entry.url.path) }
                     .buttonStyle(DataIORaisedButtonStyle(height: 22, padding: 8, fontSize: 11, mutedText: true,
                                                          background: Zen.surface, radius: 4))
-                Button("Restore", action: onRestore)
+                Button(L10n.t("backups.restoreBtn"), action: onRestore)
                     .buttonStyle(DataIOInkButtonStyle(height: 22, padding: 8, fontSize: 11, weight: .regular, radius: 4))
             }
         }

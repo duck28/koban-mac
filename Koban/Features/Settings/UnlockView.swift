@@ -119,8 +119,8 @@ struct UnlockView: View {
                 .foregroundStyle(Zen.ink)
 
             Text(hasCredentialsConfigured
-                 ? "Welcome back, \(ownerName). Verify your identity to decrypt and unlock your ledger."
-                 : "Protect your Home Budget, Freelance Ledger & Net Worth with Touch ID or a Master Passphrase.")
+                 ? L10n.tf("lock.subWelcome", ["name": ownerName])
+                 : L10n.t("lock.subConfigureMac"))
                 .font(.zen(12))
                 .foregroundStyle(Zen.ink2)
                 .multilineTextAlignment(.center)
@@ -140,10 +140,10 @@ struct UnlockView: View {
         HStack {
             HStack(spacing: 6) {
                 ZIcon("checkmark.circle", size: 14).foregroundStyle(Zen.positive)
-                Text(TouchIDKeychain.biometryAvailable ? "Touch ID & Keychain Ready" : "macOS Keychain Ready")
+                Text(TouchIDKeychain.biometryAvailable ? L10n.t("lock.bioReadyTouchId") : L10n.t("lock.bioReadyKeychain"))
             }
             Spacer()
-            Text("Local Zero-Knowledge Vault")
+            Text(L10n.t("lock.zeroKnowledgeFooter"))
         }
         .font(.zen(11))
         .foregroundStyle(Zen.ink3)
@@ -180,9 +180,9 @@ struct UnlockView: View {
         if config.hasMasterPassphrase || hasCustomDbPassphrase || !hasMac {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(hasCustomDbPassphrase && vaultLocked ? "Vault Passphrase" : L10n.t("lock.passphraseLabel"))
+                    Text(hasCustomDbPassphrase && vaultLocked ? L10n.t("lock.vaultPassphraseLabel") : L10n.t("lock.passphraseLabel"))
                         .font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
-                    SettingsTextField(icon: "key", placeholder: "Enter passphrase or PIN…", text: $passphraseInput,
+                    SettingsTextField(icon: "key", placeholder: L10n.t("lock.passphrasePlaceholder"), text: $passphraseInput,
                                       secure: true, height: 40, radius: 12, background: Zen.raised,
                                       revealToggle: $showPassphrase, onSubmit: signInWithPassphrase)
                         .focused($passphraseFocused)
@@ -206,7 +206,7 @@ struct UnlockView: View {
 
         if vaultLocked {
             Button { store.openExistingDatabase() } label: {
-                Text("Open Another Database…").frame(maxWidth: .infinity)
+                Text(L10n.t("lock.openAnotherDb")).frame(maxWidth: .infinity)
             }
             .buttonStyle(.zen(.ghost, height: 30, radius: 8, fontSize: 11))
         }
@@ -217,8 +217,8 @@ struct UnlockView: View {
     private var enrollmentView: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Account Display Name").font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
-                SettingsTextField(icon: "person.badge.shield.checkmark", placeholder: "e.g. Roland", text: $displayName,
+                Text(L10n.t("lock.displayNameLabel")).font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
+                SettingsTextField(icon: "person.badge.shield.checkmark", placeholder: L10n.t("settings.login.ownerPlaceholder"), text: $displayName,
                                   height: 36, radius: 12, background: Zen.raised)
             }
 
@@ -226,10 +226,10 @@ struct UnlockView: View {
                 HStack(alignment: .top, spacing: 10) {
                     ZIcon("touchid", size: 16).foregroundStyle(Zen.indigo).padding(.top, 1)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Touch ID (Recommended)").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                        Text(L10n.t("lock.touchIdRecommended")).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
                         Text(TouchIDKeychain.biometryAvailable
-                             ? "Sign in with your fingerprint on this Mac without typing a password. The key stays in your macOS Keychain."
-                             : "This Mac has no Touch ID; your macOS login password is used to confirm it's you instead.")
+                             ? L10n.t("lock.touchIdBioDesc")
+                             : L10n.t("lock.touchIdPasswordDesc"))
                             .font(.zen(11)).foregroundStyle(Zen.ink2).lineSpacing(2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -256,17 +256,17 @@ struct UnlockView: View {
             .background(Zen.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Zen.indigo.opacity(0.25), lineWidth: 1))
 
-            AuthOrDivider(text: "Or set Master Passphrase / PIN")
+            AuthOrDivider(text: L10n.t("lock.orSetPassphrase"))
 
             VStack(spacing: 10) {
                 HStack(spacing: 8) {
-                    SettingsTextField(placeholder: "Passphrase or PIN…", text: $passphraseInput, secure: !showPassphrase,
+                    SettingsTextField(placeholder: L10n.t("lock.shortPassphrasePlaceholder"), text: $passphraseInput, secure: !showPassphrase,
                                       height: 36, radius: 12, background: Zen.raised)
-                    SettingsTextField(placeholder: "Confirm…", text: $confirmPassphraseInput, secure: !showPassphrase,
+                    SettingsTextField(placeholder: L10n.t("lock.confirmShortPlaceholder"), text: $confirmPassphraseInput, secure: !showPassphrase,
                                       height: 36, radius: 12, background: Zen.raised, onSubmit: enrollPassphraseOnly)
                 }
                 Button(action: enrollPassphraseOnly) {
-                    Text("Save Passphrase & Sign In").frame(maxWidth: .infinity)
+                    Text(L10n.t("lock.savePassphraseSignIn")).frame(maxWidth: .infinity)
                     .fontWeight(.medium)
                 }
                 .buttonStyle(.zen(.raised, height: 36, radius: 12, fontSize: 12))
@@ -382,11 +382,11 @@ struct UnlockView: View {
         let p1 = passphraseInput.trimmingCharacters(in: .whitespacesAndNewlines)
         let p2 = confirmPassphraseInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard p1.count >= 4 else {
-            errorMsg = "Master Passphrase / PIN must be at least 4 characters."
+            errorMsg = L10n.t("settings.login.errPassphraseShort")
             return
         }
         guard p1 == p2 else {
-            errorMsg = "Passphrases do not match."
+            errorMsg = L10n.t("onboarding.s4.errMismatch")
             return
         }
         errorMsg = nil

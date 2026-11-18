@@ -108,17 +108,18 @@ struct YearlyPlannerView: View {
 
     @ViewBuilder
     private func header(items: [YearlyPlanItem]) -> some View {
+        let y = String(year)
         let titleBlock = VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 10) {
-                Text("Yearly Budget & Account Forecast Planner")
+                Text(L10n.t("yearly.title"))
                     .font(.zen(20)).foregroundStyle(Zen.ink).tracking(-0.3)
-                Text(verbatim: "Planning \(year)")
+                Text(verbatim: L10n.tf("yearly.planningBadge", ["year": y]))
                     .font(.zen(12, .semibold)).monospacedDigit()
                     .foregroundStyle(Zen.indigo)
                     .padding(.horizontal, 10).padding(.vertical, 2)
                     .background(Zen.indigo.opacity(0.15), in: Capsule())
             }
-            Text("Pre-plan next year's income, major expenses (e.g. tuition fees), and investment allocations mapped directly to your accounts.")
+            Text(L10n.t("yearly.subtitle"))
                 .font(.zen(12)).foregroundStyle(Zen.ink2)
         }
 
@@ -127,22 +128,22 @@ struct YearlyPlannerView: View {
             Button(action: seedFromCurrentBudget) {
                 HStack(spacing: 6) {
                     ZIcon("sparkles", size: 14).foregroundStyle(Zen.indigo)
-                    Text("Seed from Current Monthly × 12")
+                    Text(L10n.t("yearly.seedBtn"))
                 }
             }
             .buttonStyle(.zenOutline)
-            .help("Pre-fill yearly amounts from your current monthly budget × 12 and active recurring items")
+            .help(L10n.t("yearly.seedTip"))
 
             Button {
                 store.applyYearlyPlanToMonthlyBudgets(year: year, items: items)
             } label: {
                 HStack(spacing: 6) {
                     ZIcon("checkmark.rectangle.stack", size: 14)
-                    Text(verbatim: "Apply Plan to \(year) Monthly Worksheets").fontWeight(.medium)
+                    Text(verbatim: L10n.tf("yearly.applyBtn", ["year": y])).fontWeight(.medium)
                 }
             }
             .buttonStyle(.zen(.ink, padding: 14))
-            .help("Write planned monthly amounts into all 12 monthly worksheets of \(String(year))")
+            .help(L10n.tf("yearly.applyTip", ["year": y]))
         }
 
         ViewThatFits(in: .horizontal) {
@@ -162,7 +163,7 @@ struct YearlyPlannerView: View {
         let active = state.settings.activeYear
         return HStack(spacing: 4) {
             ForEach([active, active + 1, active + 2, active + 3], id: \.self) { yr in
-                YPYearPill(title: "\(yr)\(yr == active + 1 ? " (Next Yr)" : "")", active: year == yr) {
+                YPYearPill(title: "\(yr)\(yr == active + 1 ? " \(L10n.t("yearly.nextYrTag"))" : "")", active: year == yr) {
                     planningYear = yr
                 }
             }
@@ -187,18 +188,18 @@ struct YearlyPlannerView: View {
     private func kpiStrip(totals t: YearlyPlanTotals, accountCount: Int, lg: Bool) -> some View {
         let y = String(year)
         let kpis = [
-            KPI(id: 0, title: "Current Account Standing", value: cur(t.currentNetWorthStanding), valueColor: Zen.ink,
-                footnote: "Across \(accountCount) active account(s)", footColor: Zen.ink2),
-            KPI(id: 1, title: "\(y) Planned Income", value: "+" + cur(t.plannedIncome), valueColor: Zen.positive,
-                footnote: "\(cur(t.plannedIncome / 12)) / month avg", footColor: Zen.ink2),
-            KPI(id: 2, title: "\(y) Planned Outflows", value: "-" + cur(t.plannedExpenses), valueColor: Zen.accent,
-                footnote: "\(cur(t.plannedExpenses / 12)) / month avg", footColor: Zen.ink2),
-            KPI(id: 3, title: "Planned Investments & Est. Yield", value: "+" + cur(t.plannedSavingsAndInvestments),
+            KPI(id: 0, title: L10n.t("yearly.kpiStanding"), value: cur(t.currentNetWorthStanding), valueColor: Zen.ink,
+                footnote: L10n.tf("yearly.acrossAccounts", ["count": accountCount]), footColor: Zen.ink2),
+            KPI(id: 1, title: L10n.tf("yearly.kpiIncome", ["year": y]), value: "+" + cur(t.plannedIncome), valueColor: Zen.positive,
+                footnote: L10n.tf("yearly.perMonthAvg", ["amount": cur(t.plannedIncome / 12)]), footColor: Zen.ink2),
+            KPI(id: 2, title: L10n.tf("yearly.kpiOutflows", ["year": y]), value: "-" + cur(t.plannedExpenses), valueColor: Zen.accent,
+                footnote: L10n.tf("yearly.perMonthAvg", ["amount": cur(t.plannedExpenses / 12)]), footColor: Zen.ink2),
+            KPI(id: 3, title: L10n.t("yearly.kpiInvestments"), value: "+" + cur(t.plannedSavingsAndInvestments),
                 valueColor: Zen.indigo,
-                footnote: "+\(cur(t.estimatedInvestmentGrowth)) est. return in \(y)", footColor: Zen.positive),
-            KPI(id: 4, title: "Est. End of \(y) Standing", value: cur(t.projectedYearEndNetWorth),
+                footnote: L10n.tf("yearly.estReturnInYear", ["amount": cur(t.estimatedInvestmentGrowth), "year": y]), footColor: Zen.positive),
+            KPI(id: 4, title: L10n.tf("yearly.kpiEstEnd", ["year": y]), value: cur(t.projectedYearEndNetWorth),
                 valueColor: t.projectedYearEndNetWorth >= t.currentNetWorthStanding ? Zen.positive : Zen.accent,
-                footnote: "5-Yr Est.: \(cur(t.projectedFiveYearNetWorth))", footColor: Zen.ink2),
+                footnote: L10n.tf("yearly.fiveYrEst", ["amount": cur(t.projectedFiveYearNetWorth)]), footColor: Zen.ink2),
         ]
         YPGrid(items: kpis, columns: lg ? 5 : 2, spacing: 12) { kpi in
             VStack(alignment: .leading, spacing: 0) {
@@ -227,15 +228,15 @@ struct YearlyPlannerView: View {
         let titleBlock = VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
                 ZIcon("building.columns", size: 16).foregroundStyle(Zen.indigo)
-                Text("Current Standing of All Accounts & \(y) End-of-Year Estimates")
+                Text(L10n.tf("yearly.standingHeading", ["year": y]))
                     .font(.zen(14, .semibold)).foregroundStyle(Zen.ink)
             }
-            Text("Shows each account's current balance, planned inflows/outflows assigned to it, expected annual return %, and projected end-of-\(y) standing.")
+            Text(L10n.tf("yearly.standingDesc", ["year": y]))
                 .font(.zen(12)).foregroundStyle(Zen.ink2)
         }
         let unallocated = totals.unallocatedCashflow
         let pill = HStack(spacing: 6) {
-            Text("Unallocated Annual Cashflow:").foregroundStyle(Zen.ink3)
+            Text(L10n.t("yearly.unallocatedCashflow")).foregroundStyle(Zen.ink3)
             Text((unallocated >= 0 ? "+" : "") + cur(unallocated))
                 .fontWeight(.semibold)
                 .foregroundStyle(unallocated >= 0 ? Zen.positive : Zen.accent)
@@ -335,16 +336,16 @@ struct YearlyPlannerView: View {
         let y = String(year)
         let selectedGroup = state.groups.first { $0.id == quickGroupId }
         let titleBlock = VStack(alignment: .leading, spacing: 2) {
-            Text("Plan a Specific \(y) Expense, Tuition Fee, or Investment Allocation".uppercased())
+            Text(L10n.tf("yearly.quickAddHeading", ["year": y]).uppercased())
                 .font(.zen(12, .semibold)).tracking(0.6).foregroundStyle(Zen.ink)
-            Text("Add a planned yearly item (like $11,000 in tuition fees) and pick which account it corresponds to.")
+            Text(L10n.t("yearly.quickAddDesc"))
                 .font(.zen(11)).foregroundStyle(Zen.ink2)
         }
         let presets = HStack(spacing: 6) {
-            Text("Quick Fill:").font(.zen(11)).foregroundStyle(Zen.ink3)
-            presetButton("graduationcap", tint: Zen.accent, "Tuition Fees (11,000)") { applyPreset(.tuition) }
-            presetButton("chart.line.uptrend.xyaxis", tint: Zen.indigo, "ETF Investment (1,000/mo)") { applyPreset(.etf) }
-            presetButton("shield", tint: Zen.positive, "Retirement 3a / IRA (7,056)") { applyPreset(.retirement) }
+            Text(L10n.t("yearly.quickFill")).font(.zen(11)).foregroundStyle(Zen.ink3)
+            presetButton("graduationcap", tint: Zen.accent, L10n.t("yearly.presetTuition")) { applyPreset(.tuition) }
+            presetButton("chart.line.uptrend.xyaxis", tint: Zen.indigo, L10n.t("yearly.presetEtf")) { applyPreset(.etf) }
+            presetButton("shield", tint: Zen.positive, L10n.t("yearly.presetRetirement")) { applyPreset(.retirement) }
         }
 
         VStack(alignment: .leading, spacing: 12) {
@@ -361,31 +362,37 @@ struct YearlyPlannerView: View {
             }
 
             YPFlexWrap(spacing: 12, alignment: .bottom) {
-                formField("Planned Item / Category Name") {
+                formField(L10n.t("yearly.itemNameLabel")) {
                     TextField("", text: $quickLabel,
-                              prompt: Text("e.g. Tuition Fees, ETF Allocation, Roof Repair").foregroundStyle(Zen.ink3))
+                              prompt: Text(L10n.t("yearly.itemNamePlaceholder")).foregroundStyle(Zen.ink3))
                         .zenField(fontSize: 12)
                         .onSubmit(submitQuickAdd)
                 }
                 .ypFlex(grow: 2, basis: 190)
 
-                formField("Budget Group") {
+                formField(L10n.t("yearly.budgetGroupLabel")) {
                     YPSelect(options: state.groups.filter { workspace.includes($0.mode) }
-                                .map { ($0.id, "\($0.name) (\($0.kind.rawValue))") },
+                                .map { grp in
+                                    let kindLabel = L10n.t(grp.kind == .income ? "finance.income"
+                                                           : grp.kind == .savings ? "finance.savings" : "finance.expenses")
+                                    return (grp.id, "\(L10n.groupName(grp)) (\(kindLabel))")
+                                },
                              selection: quickGroupId, fullWidth: true) { quickGroupId = $0 }
                 }
                 .ypFlex(grow: 1, basis: 160)
 
-                formField("Schedule") {
-                    YPSelect(options: [(YearlyPlanSchedule.annualLump.rawValue, "Annual Total (\(y))"),
-                                       (YearlyPlanSchedule.monthly.rawValue, "Monthly × 12")],
+                formField(L10n.t("yearly.scheduleLabel")) {
+                    YPSelect(options: [(YearlyPlanSchedule.annualLump.rawValue, L10n.tf("yearly.annualTotalOpt", ["year": y])),
+                                       (YearlyPlanSchedule.monthly.rawValue, L10n.t("yearly.monthly12Opt"))],
                              selection: quickSchedule.rawValue, fullWidth: true) {
                         quickSchedule = YearlyPlanSchedule(rawValue: $0) ?? .annualLump
                     }
                 }
                 .ypFlex(grow: 1, basis: 125)
 
-                formField(quickSchedule == .monthly ? "Monthly (\(currency))" : "Annual (\(currency))") {
+                formField(quickSchedule == .monthly
+                          ? L10n.tf("yearly.monthlyCurrencyLabel", ["currency": currency])
+                          : L10n.tf("yearly.annualCurrencyLabel", ["currency": currency])) {
                     TextField("", text: $quickAmount, prompt: Text("11000").foregroundStyle(Zen.ink3))
                         .multilineTextAlignment(.trailing)
                         .monospacedDigit()
@@ -394,20 +401,20 @@ struct YearlyPlannerView: View {
                 }
                 .ypFlex(grow: 1, basis: 115)
 
-                formField(selectedGroup?.kind == .income ? "Deposit Into Account"
-                          : selectedGroup?.kind == .savings ? "Source Bank Account (From)"
-                          : "Corresponds to Account (Paid From)") {
-                    YPSelect(options: [("", "Unassigned Account")]
-                                + accounts.map { ($0.account.id, "\($0.account.name) (\(cur($0.liveBalance)))") },
+                formField(selectedGroup?.kind == .income ? L10n.t("yearly.depositAccount")
+                          : selectedGroup?.kind == .savings ? L10n.t("yearly.sourceAccount")
+                          : L10n.t("yearly.correspondsAccount")) {
+                    YPSelect(options: [("", L10n.t("yearly.unassignedAccount"))]
+                                + accounts.map { ($0.account.id, "\(L10n.accountName($0.account)) (\(cur($0.liveBalance)))") },
                              selection: quickAccountId, fullWidth: true) { quickAccountId = $0 }
                 }
                 .ypFlex(grow: 2, basis: 200)
 
                 if selectedGroup?.kind == .savings {
-                    formField("Destination Investment / Savings Account (To)", labelColor: Zen.indigo, labelWeight: .medium) {
-                        YPSelect(options: [("", "Select destination account…")]
+                    formField(L10n.t("yearly.destAccount"), labelColor: Zen.indigo, labelWeight: .medium) {
+                        YPSelect(options: [("", L10n.t("yearly.selectDest"))]
                                     + accounts.map {
-                                        ($0.account.id, "\($0.account.name) (\(YearlyPlanner.jsNumber(YearlyPlanner.returnRate($0.account)))% p.a.)")
+                                        ($0.account.id, "\(L10n.accountName($0.account)) (\(YearlyPlanner.jsNumber(YearlyPlanner.returnRate($0.account)))\(L10n.t("yearly.perAnnum")))")
                                     },
                                  selection: quickDestAccountId, border: Zen.indigo.opacity(0.4), fullWidth: true) {
                             quickDestAccountId = $0
@@ -419,7 +426,7 @@ struct YearlyPlannerView: View {
                 Button(action: submitQuickAdd) {
                     HStack(spacing: 6) {
                         ZIcon("plus", size: 14)
-                        Text(verbatim: "Add to \(year) Plan").fontWeight(.medium)
+                        Text(verbatim: L10n.tf("yearly.addToPlanBtn", ["year": y])).fontWeight(.medium)
                     }
                 }
                 .buttonStyle(.zen(.ink, padding: 16))
@@ -465,9 +472,9 @@ struct YearlyPlannerView: View {
                 .filter { !hideUnplannedRows || (planByCategory[$0.id]?.annualAmount ?? 0) > 0 }
                 .flatMap { ["\($0.id)#mo", "\($0.id)#yr"] }
         }
-        let filters: [(KindFilter, String)] = [(.all, "All Categories"), (.income, "Income"),
-                                               (.expense, "Expenses & Obligations"),
-                                               (.savings, "Savings & Investments")]
+        let filters: [(KindFilter, String)] = [(.all, L10n.t("yearly.filterAll")), (.income, L10n.t("finance.income")),
+                                               (.expense, L10n.t("yearly.filterExpenses")),
+                                               (.savings, L10n.t("yearly.filterSavings"))]
         let tabs = HStack(spacing: 6) {
             ForEach(filters, id: \.0) { k, label in
                 Button { filterKind = k } label: {
@@ -477,7 +484,7 @@ struct YearlyPlannerView: View {
             }
         }
         let checkbox = ZenCheckbox(isOn: $hideUnplannedRows,
-                                   label: "Show only categories with planned \(String(year)) amounts")
+                                   label: L10n.tf("yearly.showPlannedOnly", ["year": String(year)]))
 
         VStack(alignment: .leading, spacing: 16) {
             ViewThatFits(in: .horizontal) {
@@ -534,19 +541,21 @@ struct YearlyPlannerView: View {
     private func groupHeader(_ grp: CategoryGroup, rows: [CategoryItem],
                              planByCategory: [String: YearlyPlanItem]) -> some View {
         let total = rows.reduce(0) { $0 + (planByCategory[$1.id]?.annualAmount ?? 0) }
+        let kindLabel = L10n.t(grp.kind == .income ? "finance.income"
+                               : grp.kind == .savings ? "finance.savings" : "finance.expenses")
         return HStack(spacing: 8) {
             Circle().fill(Color(hexString: grp.color)).frame(width: 10, height: 10)
-            Text(grp.name.uppercased()).font(.zen(12, .semibold)).tracking(0.6).foregroundStyle(Zen.ink)
-            Text(grp.kind.rawValue.uppercased())
+            Text(L10n.groupName(grp).uppercased()).font(.zen(12, .semibold)).tracking(0.6).foregroundStyle(Zen.ink)
+            Text(kindLabel.uppercased())
                 .font(.zen(10)).foregroundStyle(Zen.ink3)
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(Zen.surface, in: RoundedRectangle(cornerRadius: 4))
                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Zen.line, lineWidth: 1))
             Spacer(minLength: 8)
             HStack(spacing: 16) {
-                (Text("Monthly Avg: ").foregroundStyle(Zen.ink2)
+                (Text("\(L10n.t("yearly.monthlyAvg")) ").foregroundStyle(Zen.ink2)
                  + Text(cur(total / 12)).fontWeight(.bold).foregroundStyle(Zen.ink))
-                (Text(verbatim: "\(year) Total: ").foregroundStyle(Zen.ink2)
+                (Text(verbatim: "\(L10n.tf("yearly.yearTotal", ["year": String(year)])) ").foregroundStyle(Zen.ink2)
                  + Text(cur(total)).fontWeight(.bold).foregroundStyle(Zen.ink))
             }
             .font(.zen(12)).monospacedDigit()
@@ -586,9 +595,8 @@ private struct YPAccountCard: View {
 
     var body: some View {
         let acc = proj.account
-        let meta = KobanTemplates.accountType(acc.type)
-        let typeLabel = (acc.customTypeLabel?.isEmpty == false ? acc.customTypeLabel! : meta.shortLabel)
-            + ((acc.institution?.isEmpty == false) ? " · \(acc.institution!)" : "")
+        let baseType = (acc.customTypeLabel?.isEmpty == false ? acc.customTypeLabel! : L10n.accountTypeShort(acc.type))
+        let typeLabel = baseType + ((acc.institution?.isEmpty == false) ? " · \(acc.institution!)" : "")
 
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 10) {
@@ -596,7 +604,7 @@ private struct YPAccountCard: View {
                     HStack(spacing: 8) {
                         Circle().fill(Color(hexString: acc.color)).frame(width: 10, height: 10)
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(acc.name).font(.zen(12, .semibold)).foregroundStyle(Zen.ink).lineLimit(1)
+                            Text(L10n.accountName(acc)).font(.zen(12, .semibold)).foregroundStyle(Zen.ink).lineLimit(1)
                             Text(typeLabel).font(.zen(10)).foregroundStyle(Zen.ink3).lineLimit(1)
                         }
                     }
@@ -609,27 +617,26 @@ private struct YPAccountCard: View {
                                           display: { YearlyPlanner.jsNumber($0) },
                                           placeholder: "", width: 36, height: 16, fontSize: 11, weight: .medium,
                                           textColor: Zen.ink, chrome: false, onChange: onRateChange)
-                            Text("% p.a.").font(.zen(10)).foregroundStyle(Zen.ink3)
+                            Text(L10n.t("yearly.perAnnum")).font(.zen(10)).foregroundStyle(Zen.ink3)
                         }
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Zen.surface, in: RoundedRectangle(cornerRadius: 6))
                         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Zen.line, lineWidth: 1))
                         .fixedSize()
-                        .help("Expected annual investment return or interest yield %")
                     }
                 }
 
                 VStack(spacing: 4) {
-                    line("Current Standing:", cur(proj.currentStanding), size: 12, labelColor: Zen.ink2,
+                    line(L10n.t("yearly.currentStanding"), cur(proj.currentStanding), size: 12, labelColor: Zen.ink2,
                          valueColor: Zen.ink)
                     if proj.plannedInflows > 0 {
-                        line("Planned Inflows / Contributions:", "+" + cur(proj.plannedInflows), valueColor: Zen.positive)
+                        line(L10n.t("yearly.plannedInflows"), "+" + cur(proj.plannedInflows), valueColor: Zen.positive)
                     }
                     if proj.plannedOutflows > 0 {
-                        line("Planned Outflows / Expenses:", "-" + cur(proj.plannedOutflows), valueColor: Zen.accent)
+                        line(L10n.t("yearly.plannedOutflows"), "-" + cur(proj.plannedOutflows), valueColor: Zen.accent)
                     }
                     if proj.estimatedReturn > 0 {
-                        line("Est. \(String(year)) Growth (\(YearlyPlanner.jsNumber(proj.returnRatePct))%):",
+                        line(L10n.tf("yearly.estGrowth", ["year": String(year), "rate": YearlyPlanner.jsNumber(proj.returnRatePct)]),
                              "+" + cur(proj.estimatedReturn), valueColor: Zen.indigo)
                     }
                 }
@@ -640,7 +647,7 @@ private struct YPAccountCard: View {
                     YPFlexWrap(spacing: 4) {
                         ForEach(Array(proj.linkedItems.prefix(4).enumerated()), id: \.offset) { _, li in
                             let isIn = li.direction == .inflow
-                            Text("\(li.label): \(isIn ? "+" : "-")\(KobanFormat.number(li.amount))")
+                            Text("\(L10n.categoryName(li.label)): \(isIn ? "+" : "-")\(KobanFormat.number(li.amount))")
                                 .font(.zen(10)).monospacedDigit().lineLimit(1)
                                 .foregroundStyle(isIn ? Zen.positive : Zen.accent)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
@@ -648,7 +655,7 @@ private struct YPAccountCard: View {
                                             in: RoundedRectangle(cornerRadius: 4))
                         }
                         if proj.linkedItems.count > 4 {
-                            Text("+\(proj.linkedItems.count - 4) more")
+                            Text(L10n.tf("yearly.moreCount", ["count": proj.linkedItems.count - 4]))
                                 .font(.zen(10)).foregroundStyle(Zen.ink3)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
                                 .background(Zen.raised, in: RoundedRectangle(cornerRadius: 4))
@@ -662,7 +669,7 @@ private struct YPAccountCard: View {
 
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(verbatim: "EST. DEC 31, \(year)").font(.zen(10)).tracking(0.5).foregroundStyle(Zen.ink3)
+                    Text(verbatim: L10n.tf("yearly.estDec31", ["year": String(year)]).uppercased()).font(.zen(10)).tracking(0.5).foregroundStyle(Zen.ink3)
                     Text(cur(proj.projectedEndBalance))
                         .font(.zen(14, .semibold)).monospacedDigit()
                         .foregroundStyle(proj.isShortfall ? Zen.accent
@@ -672,14 +679,14 @@ private struct YPAccountCard: View {
                 if proj.isShortfall {
                     HStack(spacing: 4) {
                         ZIcon("exclamationmark.triangle", size: 12, weight: .regular)
-                        Text("Shortfall").font(.zen(10, .medium))
+                        Text(L10n.t("yearly.shortfall")).font(.zen(10, .medium))
                     }
                     .foregroundStyle(Zen.accent)
                     .padding(.horizontal, 8).padding(.vertical, 2)
                     .background(Zen.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
                 } else if proj.isInvestmentOrRetirement && proj.fiveYearEstimate > proj.projectedEndBalance {
                     VStack(alignment: .trailing, spacing: 0) {
-                        Text("5-Yr Compounded").font(.zen(10)).foregroundStyle(Zen.ink3)
+                        Text(L10n.t("yearly.fiveYrCompounded")).font(.zen(10)).foregroundStyle(Zen.ink3)
                         Text(cur(proj.fiveYearEstimate)).font(.zen(12, .medium)).monospacedDigit()
                             .foregroundStyle(Zen.indigo)
                     }
@@ -748,9 +755,9 @@ private struct YPCategoryRow: View {
     private func leftBlock(annual: Double, destAcc: FinancialAccount?, destRate: Double,
                            growth: (yr1Gain: Double, yr5Value: Double)) -> some View {
         let name = HStack(spacing: 8) {
-            Text(cat.name).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+            Text(L10n.categoryName(cat)).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
             if cat.isRecurring == true {
-                Text("Recurring").font(.zen(10)).foregroundStyle(Zen.indigo)
+                Text(L10n.t("yearly.recurringBadge")).font(.zen(10)).foregroundStyle(Zen.indigo)
                     .padding(.horizontal, 6).padding(.vertical, 1)
                     .background(Zen.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
             }
@@ -759,7 +766,7 @@ private struct YPCategoryRow: View {
             let cur = { (v: Double) in KobanFormat.currency(v, code: currency) }
             let badge = HStack(alignment: .top, spacing: 4) {
                 ZIcon("chart.line.uptrend.xyaxis", size: 12, weight: .regular)
-                Text("Est. +\(cur(growth.yr1Gain)) yield in \(String(year)) · 5-Yr Value: \(cur(growth.yr5Value)) (\(YearlyPlanner.jsNumber(destRate))% p.a.)")
+                Text(L10n.tf("yearly.yieldBadge", ["gain": cur(growth.yr1Gain), "year": String(year), "val": cur(growth.yr5Value), "rate": YearlyPlanner.jsNumber(destRate)]))
                     .fixedSize(horizontal: false, vertical: true)
             }
             .font(.zen(10, .medium)).monospacedDigit()
@@ -778,49 +785,44 @@ private struct YPCategoryRow: View {
     @ViewBuilder
     private func controls(annual: Double, monthly: Double, schedule: YearlyPlanSchedule,
                           linkedId: String, destId: String) -> some View {
-        YPSelect(options: [(YearlyPlanSchedule.monthly.rawValue, "Monthly × 12"),
-                           (YearlyPlanSchedule.annualLump.rawValue, "Annual Total")],
-                 selection: schedule.rawValue, height: 28, fontSize: 11, radius: 4, textColor: Zen.ink2,
-                 help: "Planning schedule") { v in
+        YPSelect(options: [(YearlyPlanSchedule.monthly.rawValue, L10n.t("yearly.monthly12Opt")),
+                           (YearlyPlanSchedule.annualLump.rawValue, L10n.t("yearly.annualTotalSimple"))],
+                 selection: schedule.rawValue, height: 28, fontSize: 11, radius: 4, textColor: Zen.ink2) { v in
             onUpdate { $0.schedule = YearlyPlanSchedule(rawValue: v) ?? .monthly }
         }
 
         HStack(spacing: 4) {
-            Text("Mo:").font(.zen(10)).foregroundStyle(Zen.ink3)
-            YPNumberField(value: monthly, width: 80, help: "Planned monthly equivalent", cellID: "\(cat.id)#mo") { m in
+            Text(L10n.t("yearly.moShort")).font(.zen(10)).foregroundStyle(Zen.ink3)
+            YPNumberField(value: monthly, width: 80, cellID: "\(cat.id)#mo") { m in
                 onUpdate { $0.annualAmount = m * 12; $0.schedule = .monthly }
             }
         }
 
         HStack(spacing: 4) {
-            Text("Year (\(currency)):").font(.zen(10, .medium)).foregroundStyle(Zen.ink3)
+            Text(L10n.tf("yearly.yearCurrency", ["currency": currency])).font(.zen(10, .medium)).foregroundStyle(Zen.ink3)
             YPNumberField(value: annual, width: 96, weight: .semibold, textColor: Zen.ink,
                           background: Zen.surface, focusBorder: Zen.ink,
-                          help: "Total planned amount for \(String(year))", cellID: "\(cat.id)#yr") { v in
+                          cellID: "\(cat.id)#yr") { v in
                 onUpdate { $0.annualAmount = v }
             }
         }
 
-        YPSelect(options: [("", cat.kind == .income ? "Deposit Account…"
-                                : cat.kind == .savings ? "From Account…" : "Corresponds to Account…")]
-                    + accounts.map { ($0.account.id, "\($0.account.name) (\(KobanFormat.number($0.liveBalance)))") },
-                 selection: linkedId, height: 28, fontSize: 11, radius: 4, maxWidth: 190,
-                 help: cat.kind == .income ? "Account where this planned income is deposited"
-                    : cat.kind == .savings ? "Source bank account funding this contribution"
-                    : "Account this planned expense corresponds to") { v in
+        YPSelect(options: [("", cat.kind == .income ? L10n.t("yearly.depositAccountPick")
+                                : cat.kind == .savings ? L10n.t("yearly.fromAccountPick") : L10n.t("yearly.correspondsAccountPick"))]
+                    + accounts.map { ($0.account.id, "\(L10n.accountName($0.account)) (\(KobanFormat.number($0.liveBalance)))") },
+                 selection: linkedId, height: 28, fontSize: 11, radius: 4, maxWidth: 190) { v in
             onUpdate { $0.accountId = v.isEmpty ? nil : v }
         }
 
         if cat.kind == .savings {
             HStack(spacing: 4) {
                 ZIcon("arrow.right", size: 12, weight: .regular).foregroundStyle(Zen.indigo)
-                YPSelect(options: [("", "Into Investment / Savings…")]
+                YPSelect(options: [("", L10n.t("yearly.intoInvestmentPick"))]
                             + accounts.map {
-                                ($0.account.id, "\($0.account.name) (\(YearlyPlanner.jsNumber(YearlyPlanner.returnRate($0.account)))% p.a.)")
+                                ($0.account.id, "\(L10n.accountName($0.account)) (\(YearlyPlanner.jsNumber(YearlyPlanner.returnRate($0.account)))\(L10n.t("yearly.perAnnum")))")
                             },
                          selection: destId, height: 28, fontSize: 11, radius: 4,
-                         background: Zen.indigo.opacity(0.1), border: Zen.indigo.opacity(0.3), maxWidth: 190,
-                         help: "Destination investment, retirement, or savings account where the money goes") { v in
+                         background: Zen.indigo.opacity(0.1), border: Zen.indigo.opacity(0.3), maxWidth: 190) { v in
                     onUpdate { $0.destinationAccountId = v.isEmpty ? nil : v }
                 }
             }
@@ -828,7 +830,7 @@ private struct YPCategoryRow: View {
 
         if annual > 0 {
             ZenMiniButton(icon: "trash", size: 14, tint: Zen.ink3, hoverTint: Zen.accent,
-                          help: "Clear planned amount", action: onDelete)
+                          help: L10n.t("yearly.clearPlanTip"), action: onDelete)
         }
     }
 }

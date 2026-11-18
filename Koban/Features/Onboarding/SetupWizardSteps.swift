@@ -286,7 +286,7 @@ private struct GroupCard: View {
                 HStack(spacing: 8) {
                     HStack(spacing: 6) {
                         Circle().fill(Color(hexString: group.color)).frame(width: 8, height: 8)
-                        Text(group.name.uppercased()).font(.zen(11, .semibold)).tracking(0.55)
+                        Text(L10n.groupName(group).uppercased()).font(.zen(11, .semibold)).tracking(0.55)
                             .foregroundStyle(Zen.ink).lineLimit(1)
                         Text("(\(checkedCount))").font(.zen(10)).monospacedDigit().foregroundStyle(Zen.ink3)
                     }
@@ -294,7 +294,7 @@ private struct GroupCard: View {
                     HStack(spacing: 6) {
                         TinyTextButton(label: L10n.t("onboarding.s2.all")) { model.setGroupSelection(group, .all) }
                         Text("·")
-                        TinyTextButton(icon: "arrow.counterclockwise", help: "Reset to default selection") {
+                        TinyTextButton(icon: "arrow.counterclockwise", help: L10n.t("onboarding.s2.resetRecurring")) {
                             model.setGroupSelection(group, .default)
                         }
                         Text("·")
@@ -309,7 +309,7 @@ private struct GroupCard: View {
 
                 FlowLayout(spacing: 6) {
                     ForEach(group.items) { item in
-                        CategoryChip(name: item.name, isChecked: selected.contains(item.id),
+                        CategoryChip(name: L10n.categoryName(item), isChecked: selected.contains(item.id),
                                      isRecurring: model.recurringCategoryIds.contains(item.id),
                                      onToggle: { model.toggleCategory(group.mode, item.id) },
                                      onToggleRecurring: { model.toggleRecurringCategory(group.mode, item.id) })
@@ -389,9 +389,7 @@ private struct CategoryChip: View {
             }
             .buttonStyle(.plain)
             RecurringToggle(isOn: isRecurring,
-                            help: isRecurring
-                                ? "\(name): Set as recurring monthly item (click to disable recurring)"
-                                : "\(name): One-off / variable item (click to set as recurring monthly)",
+                            help: "\(name): \(L10n.t(isRecurring ? "worksheet.recurringDisableTip" : "worksheet.recurringEnableTip"))",
                             action: onToggleRecurring)
         }
         .font(.zen(11, isChecked ? .medium : .regular))
@@ -422,8 +420,7 @@ private struct CustomChip: View {
             }
             .padding(.leading, 8).padding(.trailing, 6)
             RecurringToggle(isOn: isRecurring,
-                            help: isRecurring ? "\(name): Recurring monthly item (click to disable)"
-                                              : "\(name): Click to mark as recurring monthly item",
+                            help: "\(name): \(L10n.t(isRecurring ? "worksheet.recurringDisableTip" : "worksheet.recurringEnableTip"))",
                             action: onToggleRecurring)
             RemoveToggle(action: onRemove)
         }
@@ -476,7 +473,7 @@ private struct RemoveToggle: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help("Remove custom category")
+        .help(L10n.t("common.remove"))
     }
 }
 
@@ -591,7 +588,7 @@ struct SetupStepAccounts: View {
             ? types : types + [(acc.type, KobanTemplates.accountType(acc.type).label)]
         return VStack(spacing: 6) {
             HStack(spacing: 6) {
-                OnbTextField(text: Binding(get: { model.draftAccounts.first { $0.id == id }?.name ?? "" },
+                OnbTextField(text: Binding(get: { model.draftAccounts.first { $0.id == id }.map { L10n.accountName($0) } ?? "" },
                                            set: { v in model.updateDraftAccount(id) { $0.name = v } }),
                              placeholder: liquid ? L10n.t("onboarding.s3.accountNamePlaceholder") : L10n.t("onboarding.s3.wealthNamePlaceholder"),
                              height: 28, fontSize: 12, background: Zen.app, radius: 4, horizontalPadding: 8)

@@ -12,8 +12,13 @@ struct RecurringView: View {
     @State private var amountInvalid = false
     @FocusState private var amountFocused: Bool
 
-    static let frequencyOptions: [(RecurrenceFrequency, String)] =
-        [(.monthly, "Monthly"), (.quarterly, "Quarterly"), (.yearly, "Yearly")]
+    static var frequencyOptions: [(RecurrenceFrequency, String)] {
+        [
+            (.monthly, L10n.t("recurring.freqMonthly")),
+            (.quarterly, L10n.t("recurring.freqQuarterly")),
+            (.yearly, L10n.t("recurring.freqYearly")),
+        ]
+    }
 
     var body: some View {
         let state = store.state
@@ -46,17 +51,17 @@ struct RecurringView: View {
 
     private func header(monthKey: String) -> some View {
         let title = VStack(alignment: .leading, spacing: 2) {
-            Text("Recurring Income, Subscriptions & Fixed Costs")
+            Text(L10n.t("recurring.title"))
                 .font(.zen(20))
                 .foregroundStyle(Zen.ink)
-            Text("Automate fixed monthly wages, mortgage/rent, health insurance, SaaS subscriptions, and client retainers.")
+            Text(L10n.t("recurring.subtitle"))
                 .font(.zen(12))
                 .foregroundStyle(Zen.ink2)
         }
         let post = Button { store.applyRecurringToMonth() } label: {
             HStack(spacing: 8) {
                 ZIcon("play", size: 14)
-                Text("Post Active Recurring Items to \(monthKey)").fontWeight(.medium)
+                Text(L10n.tf("recurring.postBtn", ["month": monthKey])).fontWeight(.medium)
             }
         }
         .buttonStyle(.zen(.ink, height: 36, padding: 16))
@@ -81,21 +86,21 @@ struct RecurringView: View {
         let groups: [TxOptionGroup<String>] = state.groups
             .filter { workspace.includes($0.mode) }
             .map { grp in
-                TxOptionGroup(label: grp.name,
+                TxOptionGroup(label: L10n.groupName(grp),
                               options: state.categories
                                 .filter { $0.groupId == grp.id && workspace.includes($0.mode) }
-                                .map { ($0.id, $0.name) })
+                                .map { ($0.id, L10n.categoryName($0)) })
             }
 
-        let category = TxField(label: "Category") {
+        let category = TxField(label: L10n.t("finance.category")) {
             TxSelect(groups: groups, selection: $categoryId)
         }
-        let desc = TxField(label: "Description / Subscription Name") {
-            TextField("", text: $description, prompt: txPrompt("e.g. Wages, Mortgage/Rent, Health Insurance"))
+        let desc = TxField(label: L10n.t("recurring.descLabel")) {
+            TextField("", text: $description, prompt: txPrompt(L10n.t("recurring.descPlaceholder")))
                 .txInput()
                 .onSubmit(submit)
         }
-        let amountField = TxField(label: "Amount (\(currency))") {
+        let amountField = TxField(label: L10n.tf("tx.amountCurrency", ["currency": currency])) {
             TextField("", text: $amount, prompt: txPrompt("0.00"))
                 .multilineTextAlignment(.trailing)
                 .monospacedDigit()
@@ -104,22 +109,22 @@ struct RecurringView: View {
                 .onSubmit(submit)
                 .onChange(of: amount) { _, _ in amountInvalid = false }
         }
-        let freq = TxField(label: "Frequency") {
+        let freq = TxField(label: L10n.t("recurring.freqLabel")) {
             TxSelect(options: Self.frequencyOptions, selection: $frequency)
         }
-        let day = TxField(label: "Day (1–28)") {
+        let day = TxField(label: L10n.t("recurring.dayRangeLabel")) {
             TextField("", text: $dayOfMonth)
                 .multilineTextAlignment(.center)
                 .monospacedDigit()
                 .txInput(padding: 8)
-                .help("Day of month")
+                .help(L10n.t("recurring.dayLabel"))
                 .onSubmit(submit)
         }
         .frame(width: 80)
         let add = Button(action: submit) {
             HStack(spacing: 6) {
                 ZIcon("plus", size: 14)
-                Text("Add Rule").fontWeight(.medium)
+                Text(L10n.t("recurring.addRuleBtn")).fontWeight(.medium)
             }
         }
         .buttonStyle(.zen(.ink, padding: 16))
@@ -154,23 +159,23 @@ struct RecurringView: View {
             FlowLayout(spacing: 16) {
                 HStack(spacing: 8) {
                     ZIcon("repeat", size: 16).foregroundStyle(Zen.indigo)
-                    (Text("Fixed Monthly Outflow: ").foregroundStyle(Zen.ink2)
-                     + Text("\(KobanFormat.currency(outflow, code: currency))/mo")
+                    (Text("\(L10n.t("recurring.fixedOutflow")) ").foregroundStyle(Zen.ink2)
+                     + Text("\(KobanFormat.currency(outflow, code: currency))\(L10n.t("recurring.perMonthSuffix"))")
                         .fontWeight(.bold).foregroundStyle(Zen.ink))
                         .monospacedDigit()
                 }
                 if income > 0 {
                     HStack(spacing: 6) {
                         Text("·").foregroundStyle(Zen.ink2)
-                        (Text("Recurring Income: ").foregroundStyle(Zen.ink2)
-                         + Text("+\(KobanFormat.currency(income, code: currency))/mo")
+                        (Text("\(L10n.t("recurring.recurringIncome")) ").foregroundStyle(Zen.ink2)
+                         + Text("+\(KobanFormat.currency(income, code: currency))\(L10n.t("recurring.perMonthSuffix"))")
                             .fontWeight(.bold).foregroundStyle(Zen.positive))
                             .monospacedDigit()
                     }
                 }
             }
             Spacer(minLength: 12)
-            Text("\(activeCount) active of \(total) recurring items")
+            Text(L10n.tf("recurring.activeOfTotal", ["active": activeCount, "total": total]))
                 .foregroundStyle(Zen.ink3)
                 .monospacedDigit()
                 .fixedSize()
@@ -189,7 +194,7 @@ struct RecurringView: View {
         let grpMap = Dictionary(state.groups.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         return VStack(spacing: 0) {
             if rules.isEmpty {
-                Text("No recurring rules configured yet. Add one above or toggle the recurring icon on categories during setup.")
+                Text(L10n.t("recurring.emptyRules"))
                     .font(.zen(12))
                     .foregroundStyle(Zen.ink3)
                     .multilineTextAlignment(.center)
@@ -277,7 +282,7 @@ private struct RecurringRuleRow: View {
                 HStack(spacing: 8) {
                     Text(rule.description)
                         .font(.zen(12, .medium)).foregroundStyle(Zen.ink).lineLimit(1).truncationMode(.tail)
-                    Text(rule.type == .income ? "Income" : "Fixed / Recurring")
+                    Text(L10n.t(rule.type == .income ? "tx.filterIncome" : "recurring.fixedBadge"))
                         .font(.zen(10, .medium))
                         .foregroundStyle(rule.type == .income ? Zen.positive : Zen.ink2)
                         .padding(.horizontal, 6)
@@ -286,7 +291,7 @@ private struct RecurringRuleRow: View {
                                     in: RoundedRectangle(cornerRadius: 4))
                         .fixedSize()
                 }
-                Text("\(group?.name ?? "Category") · \(category?.name ?? rule.description)")
+                Text("\(group.map { L10n.groupName($0) } ?? L10n.t("finance.category")) · \(category.map { L10n.categoryName($0) } ?? rule.description)")
                     .font(.zen(11)).foregroundStyle(Zen.ink3).lineLimit(1).truncationMode(.tail)
             }
         }
@@ -298,15 +303,14 @@ private struct RecurringRuleRow: View {
                      selection: Binding(get: { rule.frequency },
                                         set: { store.updateRecurringRule(rule.id, patch: .init(frequency: $0)) }),
                      height: 28, radius: 4, fontSize: 11, textColor: Zen.ink2, fullWidth: false)
-                .help("Recurring frequency")
 
             HStack(spacing: 4) {
-                Text("Day").font(.zen(11)).foregroundStyle(Zen.ink3)
+                Text(L10n.t("recurring.dayLabel")).font(.zen(11)).foregroundStyle(Zen.ink3)
                 RuleNumberField(value: Double(rule.dayOfMonth), fontSize: 11, weight: .regular, color: Zen.ink,
                                 alignment: .center, width: 48, placeholder: "") { text in
                     store.updateRecurringRule(rule.id, patch: .init(dayOfMonth: RecurringRule.clampDay(text)))
                 }
-                .help("Day of month")
+                .help(L10n.t("recurring.dayLabel"))
             }
 
             HStack(spacing: 4) {
@@ -377,6 +381,6 @@ private struct DeleteRuleButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help("Delete recurring rule")
+        .help(L10n.t("common.delete"))
     }
 }

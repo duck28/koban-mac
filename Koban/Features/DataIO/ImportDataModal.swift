@@ -63,8 +63,8 @@ struct ImportDataModal: View {
                         DataIOPill(text: previewData == nil ? L10n.t("import.step1") : L10n.t("import.step2"),
                                    foreground: Zen.ink2, background: Zen.raised, border: Zen.line)
                     }
-                    Text(previewData.map { "Review the parsed data from \"\($0.fileName)\" before applying changes to your ledger" }
-                         ?? "Import spreadsheets, transaction CSVs, or encrypted database backups")
+                    Text(previewData.map { L10n.tf("import.subReview", ["file": $0.fileName]) }
+                         ?? L10n.t("import.subSelect"))
                         .font(.zen(12)).foregroundStyle(Zen.ink2).lineLimit(1)
                 }
             }
@@ -92,13 +92,13 @@ struct ImportDataModal: View {
     private var cards: [SourceCard] {
         [
             SourceCard(id: .budgetSheet, title: L10n.t("import.budgetSheet"),
-                       subtitle: "Import category groups, categories, budgeted amounts, and actuals from a 2-column or flat spreadsheet.",
+                       subtitle: L10n.t("import.budgetSheetDesc"),
                        formats: ".xlsx, .xls, .csv", icon: "tablecells", accent: Zen.positive),
             SourceCard(id: .transactions, title: L10n.t("import.transactions"),
-                       subtitle: "Import itemized income & expense entries (Date, Description, Amount, Category, Client, Invoice, VAT %).",
+                       subtitle: L10n.t("import.transactionsDesc"),
                        formats: ".csv, .xlsx, .xls", icon: "list.bullet.rectangle.portrait", accent: Zen.indigo),
             SourceCard(id: .databaseBackup, title: L10n.t("import.backup"),
-                       subtitle: "Restore a full AES-256-GCM encrypted Koban SQLite database (.db) or JSON backup snapshot.",
+                       subtitle: L10n.t("import.backupDesc"),
                        formats: ".db, .sqlite, .json", icon: "cylinder.split.1x2", accent: Zen.accent),
         ]
     }
@@ -106,7 +106,7 @@ struct ImportDataModal: View {
     private var sourceStep: some View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("1. SELECT WHAT TO IMPORT").font(.zen(12, .medium)).tracking(1.4).foregroundStyle(Zen.ink3)
+                Text(L10n.t("import.step1Heading").uppercased()).font(.zen(12, .medium)).tracking(1.4).foregroundStyle(Zen.ink3)
                 VStack(spacing: 8) {
                     ForEach(cards) { sourceCard($0) }
                 }
@@ -115,13 +115,13 @@ struct ImportDataModal: View {
             if importKind != .databaseBackup {
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Target Workspace & Month (\(monthKey))").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
-                        Text("Choose which ledger workspace receives the imported items").font(.zen(11)).foregroundStyle(Zen.ink3)
+                        Text(L10n.tf("import.targetWorkspace", ["month": monthKey])).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                        Text(L10n.t("import.targetWorkspaceDesc")).font(.zen(11)).foregroundStyle(Zen.ink3)
                     }
                     Spacer()
                     HStack(spacing: 0) {
-                        segment("Home Budget", .home)
-                        segment("Freelancer", .freelancer)
+                        segment(L10n.t("onboarding.home"), .home)
+                        segment(L10n.t("workspace.freelancer"), .freelancer)
                     }
                     .padding(2)
                     .background(Zen.raised, in: RoundedRectangle(cornerRadius: 8))
@@ -134,12 +134,12 @@ struct ImportDataModal: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         ZIcon("lock", size: 14).foregroundStyle(Zen.positive)
-                        Text("Optional Vault Passphrase").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                        Text(L10n.t("import.optionalPassphrase")).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
                     }
-                    Text("Leave empty if the backup uses Koban's default AES-256-GCM vault key, or enter your custom passphrase if you configured one.")
+                    Text(L10n.t("import.optionalPassphraseDesc"))
                         .font(.zen(11)).foregroundStyle(Zen.ink2)
                         .fixedSize(horizontal: false, vertical: true)
-                    DataIOTextField(placeholder: "Optional custom vault passphrase…", text: $passphrase, secure: true,
+                    DataIOTextField(placeholder: L10n.t("import.optionalPassphrasePlaceholder"), text: $passphrase, secure: true,
                                     height: 32, background: Zen.surface, trailingPadding: 10)
                 }
                 .padding(14)
@@ -157,9 +157,9 @@ struct ImportDataModal: View {
                     HStack(alignment: .top, spacing: 10) {
                         ZIcon("eye", size: 16).foregroundStyle(Zen.indigo).padding(.top, 1)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Preview data and require confirmation before completing import")
+                            Text(L10n.t("import.previewToggleTitle"))
                                 .font(.zen(12, .medium)).foregroundStyle(Zen.ink)
-                            Text("Inspect all parsed rows and totals before committing to the ledger. You can also change this anytime in Settings & Behavior.")
+                            Text(L10n.t("import.previewToggleDesc"))
                                 .font(.zen(11)).foregroundStyle(Zen.ink3)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -182,8 +182,8 @@ struct ImportDataModal: View {
                 Button(action: selectFile) {
                     HStack(spacing: 8) {
                         ZIcon(confirmAndPreview ? "eye" : "square.and.arrow.up", size: 14)
-                        Text(isBusy ? "Reading File…"
-                             : confirmAndPreview ? L10n.t("import.selectFile") : "Select File & Import Immediately…")
+                        Text(isBusy ? L10n.t("import.readingFile")
+                             : confirmAndPreview ? L10n.t("import.selectFile") : L10n.t("import.selectImmediate"))
                     }
                 }
                 .buttonStyle(DataIOInkButtonStyle(height: 36, padding: 20))
@@ -330,7 +330,7 @@ struct ImportDataModal: View {
                 Button { confirm(p, budgetSelected: bm.selectedCount, txSelected: tm.selectedCount) } label: {
                     HStack(spacing: 8) {
                         ZIcon("checkmark.circle", size: 16)
-                        Text(isBusy ? "Completing Import…" : "\(L10n.t("import.confirm")) (\(confirmCountLabel(p, bm, tm)))")
+                        Text(isBusy ? L10n.t("import.completing") : "\(L10n.t("import.confirm")) (\(confirmCountLabel(p, bm, tm)))")
                     }
                 }
                 .buttonStyle(DataIOInkButtonStyle(height: 36, padding: 20))
@@ -344,9 +344,9 @@ struct ImportDataModal: View {
 
     private func confirmCountLabel(_ p: ImportPreviewData, _ bm: BudgetMetrics, _ tm: TxMetrics) -> String {
         switch p.kind {
-        case .transactions: return "\(tm.selectedCount) transactions"
-        case .budgetSheet: return "\(bm.selectedCount) categories"
-        case .databaseBackup: return "\(p.importedCount) records"
+        case .transactions: return "\(tm.selectedCount)"
+        case .budgetSheet: return "\(bm.selectedCount)"
+        case .databaseBackup: return "\(p.importedCount)"
         }
     }
 
@@ -362,11 +362,12 @@ struct ImportDataModal: View {
     private func contextBanner(_ p: ImportPreviewData, _ bm: BudgetMetrics) -> some View {
         var line = Text(p.fileName).fontWeight(.semibold).foregroundColor(Zen.ink)
         if let sheet = p.sheetName, !sheet.isEmpty {
-            line = line + Text(" • Sheet: ").foregroundColor(Zen.ink2) + Text(sheet).fontWeight(.bold).foregroundColor(Zen.ink)
+            line = line + Text(" • ").foregroundColor(Zen.ink2) + Text(sheet).fontWeight(.bold).foregroundColor(Zen.ink)
         }
         if p.kind != .databaseBackup {
-            line = line + Text(" • Target: ").foregroundColor(Zen.ink2)
-                + Text(p.targetMode.rawValue.capitalized).fontWeight(.bold).foregroundColor(Zen.ink)
+            let modeLabel = p.targetMode == .home ? L10n.t("workspace.home") : L10n.t("workspace.freelancer")
+            line = line + Text(" • ").foregroundColor(Zen.ink2)
+                + Text(modeLabel).fontWeight(.bold).foregroundColor(Zen.ink)
                 + Text(" (\(monthKey))").foregroundColor(Zen.ink2)
         }
         return HStack(spacing: 12) {
@@ -377,7 +378,7 @@ struct ImportDataModal: View {
             Spacer(minLength: 8)
             if p.kind == .budgetSheet {
                 DataIOCheckbox(isOn: $hideZeroPreviewRows, spacing: 6) {
-                    Text("Show non-zero rows only (\(bm.nonZeroCount) of \(p.budgetRows?.count ?? 0))")
+                    Text(L10n.tf("import.showNonZeroOnly", ["active": bm.nonZeroCount, "total": p.budgetRows?.count ?? 0]))
                         .font(.zen(12)).foregroundStyle(Zen.ink2)
                 }
                 .fixedSize()
@@ -411,21 +412,24 @@ struct ImportDataModal: View {
     @ViewBuilder
     private func budgetPreview(_ p: ImportPreviewData, _ bm: BudgetMetrics) -> some View {
         statRow {
-            stat("Categories Parsed", "\(p.budgetRows?.count ?? 0) rows", sub: "\(bm.newCount) new • \(bm.nonZeroCount) active")
-            stat("Income (Budget / Actual)", money(bm.incomeBudget), color: Zen.positive, sub: "Actual: \(money(bm.incomeActual))")
-            stat("Outflows (Budget / Actual)", money(bm.outflowBudget), sub: "Actual: \(money(bm.outflowActual))")
-            stat("Net Cashflow Preview", money(bm.netActual), color: bm.netActual >= 0 ? Zen.positive : DataIOColors.negative,
-                 sub: "Planned Net: \(money(bm.netBudget))")
+            stat(L10n.t("import.categoriesParsed"), L10n.tf("import.rowsCount", ["count": p.budgetRows?.count ?? 0]),
+                 sub: L10n.tf("import.newActiveCounts", ["new": bm.newCount, "active": bm.nonZeroCount]))
+            stat(L10n.t("import.incomeBudgetActual"), money(bm.incomeBudget), color: Zen.positive,
+                 sub: "\(L10n.t("finance.actual")): \(money(bm.incomeActual))")
+            stat(L10n.t("import.outflowsBudgetActual"), money(bm.outflowBudget),
+                 sub: "\(L10n.t("finance.actual")): \(money(bm.outflowActual))")
+            stat(L10n.t("import.netCashflowPreview"), money(bm.netActual), color: bm.netActual >= 0 ? Zen.positive : DataIOColors.negative,
+                 sub: L10n.tf("reports.plannedNet", ["amount": money(bm.netBudget)]))
         }
 
         let rows = (p.budgetRows ?? []).filter { !hideZeroPreviewRows || abs($0.budget) > 0.001 || abs($0.actual) > 0.001 }
         previewTable(header: {
             th("✓", width: 32, align: .center)
-            th("Group", width: 180)
-            th("Category", width: nil)
-            th("Action", width: 72)
-            th("Budget (\(currency))", width: 150, align: .trailing)
-            th("Actual (\(currency))", width: 150, align: .trailing)
+            th(L10n.t("import.colGroup"), width: 180)
+            th(L10n.t("finance.category"), width: nil)
+            th(L10n.t("import.colAction"), width: 72)
+            th("\(L10n.t("finance.budget")) (\(currency))", width: 150, align: .trailing)
+            th("\(L10n.t("finance.actual")) (\(currency))", width: 150, align: .trailing)
         }, rows: rows) { row in
             BudgetPreviewRowView(row: row, included: !excluded.contains(row.categoryId)) { toggle(row.categoryId) }
         }
@@ -436,18 +440,18 @@ struct ImportDataModal: View {
     @ViewBuilder
     private func transactionPreview(_ p: ImportPreviewData, _ tm: TxMetrics) -> some View {
         statRow {
-            stat("Entries to Import", "\(p.transactionRows?.count ?? 0) transactions")
-            stat("Income (\(tm.incomeCount))", money(tm.incomeTotal), color: Zen.positive)
-            stat("Expenses (\(tm.expenseCount))", money(tm.expenseTotal))
-            stat("Net Transaction Total", money(tm.netTotal), color: tm.netTotal >= 0 ? Zen.positive : DataIOColors.negative)
+            stat(L10n.t("import.entriesToImport"), L10n.tf("import.txCountLabel", ["count": p.transactionRows?.count ?? 0]))
+            stat("\(L10n.t("finance.income")) (\(tm.incomeCount))", money(tm.incomeTotal), color: Zen.positive)
+            stat("\(L10n.t("finance.expenses")) (\(tm.expenseCount))", money(tm.expenseTotal))
+            stat(L10n.t("import.netTxTotal"), money(tm.netTotal), color: tm.netTotal >= 0 ? Zen.positive : DataIOColors.negative)
         }
         previewTable(header: {
             th("✓", width: 32, align: .center)
-            th("Date", width: 96)
-            th("Type", width: 84)
-            th("Category", width: 180)
-            th("Description", width: nil)
-            th("Amount (\(currency))", width: 140, align: .trailing)
+            th(L10n.t("finance.date"), width: 96)
+            th(L10n.t("import.colType"), width: 84)
+            th(L10n.t("finance.category"), width: 180)
+            th(L10n.t("finance.description"), width: nil)
+            th("\(L10n.t("finance.amount")) (\(currency))", width: 140, align: .trailing)
         }, rows: p.transactionRows ?? []) { tx in
             TransactionPreviewRowView(tx: tx, included: !excluded.contains(tx.id)) { toggle(tx.id) }
         }
@@ -460,9 +464,8 @@ struct ImportDataModal: View {
         let s = p.proposedState
         HStack(alignment: .top, spacing: 10) {
             ZIcon("exclamationmark.triangle", size: 16).foregroundStyle(Zen.accent).padding(.top, 1)
-            (Text("Confirmation Required:").fontWeight(.semibold)
-             + Text(" Restoring this backup snapshot will replace your current active ledger with the contents of ")
-             + Text(p.fileName).fontWeight(.bold) + Text("."))
+            (Text(L10n.t("import.backupConfirmTitle")).fontWeight(.semibold)
+             + Text(" " + L10n.tf("import.backupConfirmBody", ["file": p.fileName])))
                 .font(.zen(12)).foregroundStyle(Zen.ink)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -472,16 +475,16 @@ struct ImportDataModal: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Zen.accent.opacity(0.3), lineWidth: 1))
 
         statRow {
-            stat("Groups & Categories", "\(s.groups.count) groups • \(s.categories.count) cats")
-            stat("Financial Accounts", "\(s.accounts.count) accounts")
-            stat("Transactions & Rules", "\(s.transactions.count) txs • \(s.recurringRules.count) rules")
-            stat("Backup Currency & Period", "\(s.settings.currency) • \(s.settings.activeYear)-\(String(format: "%02d", s.settings.activeMonth))",
+            stat(L10n.t("import.groupsCategories"), "\(s.groups.count) • \(s.categories.count)")
+            stat(L10n.t("import.financialAccounts"), "\(s.accounts.count)")
+            stat(L10n.t("import.transactionsRules"), "\(s.transactions.count) • \(s.recurringRules.count)")
+            stat(L10n.t("import.backupCurrencyPeriod"), "\(s.settings.currency) • \(s.settings.activeYear)-\(String(format: "%02d", s.settings.activeMonth))",
                  color: Zen.positive)
         }
 
         if !s.accounts.isEmpty {
             VStack(spacing: 0) {
-                Text("ACCOUNTS INCLUDED IN BACKUP SNAPSHOT")
+                Text(L10n.t("import.accountsIncluded").uppercased())
                     .font(.zen(10, .medium)).tracking(0.6).foregroundStyle(Zen.ink3)
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -492,8 +495,8 @@ struct ImportDataModal: View {
                         ForEach(Array(s.accounts.enumerated()), id: \.element.id) { idx, acc in
                             if idx > 0 { Rectangle().fill(Zen.line.opacity(0.6)).frame(height: 1) }
                             HStack {
-                                (Text(acc.name).fontWeight(.medium).foregroundColor(Zen.ink)
-                                 + Text("  (\(acc.classification.rawValue.replacingOccurrences(of: "_", with: " ").capitalized))")
+                                (Text(L10n.accountName(acc)).fontWeight(.medium).foregroundColor(Zen.ink)
+                                 + Text("  (\(L10n.accountClassLabel(acc.classification)))")
                                     .font(.zen(11)).foregroundColor(Zen.ink3))
                                 Spacer()
                                 let bal = acc.currentBalance != 0 ? acc.currentBalance : acc.startingBalance
@@ -563,17 +566,17 @@ private struct BudgetPreviewRowView: View {
             Button(action: toggle) { DataIOCheckSquare(isOn: included) }
                 .buttonStyle(.plain)
                 .frame(width: 32)
-            Text(row.groupName).font(.zen(11, .medium)).foregroundStyle(Zen.ink2).lineLimit(1)
+            Text(L10n.groupName(row.groupName)).font(.zen(11, .medium)).foregroundStyle(Zen.ink2).lineLimit(1)
                 .padding(.horizontal, 12).frame(width: 180, alignment: .leading)
-            Text(row.categoryName).font(.zen(12, .medium)).foregroundStyle(hasValue ? Zen.ink : Zen.ink3).lineLimit(1)
+            Text(L10n.categoryName(row.categoryName, id: row.categoryId)).font(.zen(12, .medium)).foregroundStyle(hasValue ? Zen.ink : Zen.ink3).lineLimit(1)
                 .padding(.horizontal, 12).frame(maxWidth: .infinity, alignment: .leading)
             Group {
                 if row.isNewCategory {
-                    Text("New").font(.zen(10, .medium)).foregroundStyle(Zen.positive)
+                    Text(L10n.t("import.badgeNew")).font(.zen(10, .medium)).foregroundStyle(Zen.positive)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Zen.positive.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
                 } else {
-                    Text("Update").font(.zen(10)).foregroundStyle(Zen.ink2)
+                    Text(L10n.t("import.badgeUpdate")).font(.zen(10)).foregroundStyle(Zen.ink2)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Zen.raised, in: RoundedRectangle(cornerRadius: 4))
                 }
@@ -621,12 +624,12 @@ private struct TransactionPreviewRowView: View {
                 .frame(width: 32)
             Text(tx.date).monospacedDigit().foregroundStyle(Zen.ink2)
                 .padding(.horizontal, 12).frame(width: 96, alignment: .leading)
-            Text(tx.type.rawValue.uppercased()).font(.zen(10, .medium))
+            Text(L10n.t(income ? "tx.filterIncome" : "tx.filterExpense").uppercased()).font(.zen(10, .medium))
                 .foregroundStyle(income ? Zen.positive : Zen.ink2)
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(income ? Zen.positive.opacity(0.12) : Zen.raised, in: RoundedRectangle(cornerRadius: 4))
                 .padding(.horizontal, 10).frame(width: 84, alignment: .leading)
-            Text(tx.categoryName).foregroundStyle(Zen.ink2).lineLimit(1)
+            Text(L10n.categoryName(tx.categoryName)).foregroundStyle(Zen.ink2).lineLimit(1)
                 .padding(.horizontal, 12).frame(width: 180, alignment: .leading)
             (Text(tx.description).fontWeight(.medium).foregroundColor(Zen.ink)
              + (tx.client.map { Text("  (\($0))").font(.zen(11)).foregroundColor(Zen.ink3) } ?? Text("")))

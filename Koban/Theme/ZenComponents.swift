@@ -275,7 +275,7 @@ struct ZenToast: View {
                     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: filePath)])
                 } label: {
                     HStack(spacing: 4) {
-                        Text("Reveal")
+                        Text(L10n.t("backups.revealBtn"))
                         ZIcon("arrow.up.right.square", size: 12)
                     }
                     .font(.zen(12))

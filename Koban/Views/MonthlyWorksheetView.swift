@@ -47,12 +47,12 @@ struct MonthlyWorksheetView: View {
                 // Header + toolbar
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(workspace == .home ? "Personal Monthly Budget"
-                             : workspace == .freelancer ? "Freelancer Business Budget & P&L"
-                             : "Combined Home & Freelancer Worksheet")
+                        Text(workspace == .home ? L10n.t("worksheet.titleHome")
+                             : workspace == .freelancer ? L10n.t("worksheet.titleFreelancer")
+                             : L10n.t("worksheet.titleCombined"))
                             .font(.zen(20))
                             .foregroundStyle(Zen.ink)
-                        Text("Click any Budget or Actual figure to edit directly inline, or log itemized transactions.")
+                        Text(L10n.t("worksheet.subtitle"))
                             .font(.zen(12))
                             .foregroundStyle(Zen.ink2)
                     }
@@ -62,7 +62,7 @@ struct MonthlyWorksheetView: View {
                             HStack(spacing: 6) {
                                 ZIcon(hideZero ? "eye" : "eye.slash", size: 14)
                                     .foregroundStyle(hideZero ? Zen.accent : Zen.ink2)
-                                Text(hideZero ? "Showing Active Only" : "Hide Zero Rows")
+                                Text(hideZero ? L10n.t("worksheet.showingActive") : L10n.t("worksheet.hideZeroRows"))
                                     .fontWeight(hideZero ? .medium : .regular)
                             }
                         }
@@ -70,39 +70,39 @@ struct MonthlyWorksheetView: View {
                         .overlay {
                             if hideZero { RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.ink, lineWidth: 1) }
                         }
-                        .help("Hide or show categories with 0.00 Budget and 0.00 Actual")
+                        .help(L10n.t("worksheet.hideZeroRowsTip"))
 
                         Button { requestCopy(.prevToCurrent) } label: {
                             HStack(spacing: 6) {
                                 ZIcon("doc.on.doc", size: 14).foregroundStyle(Zen.indigo)
-                                Text("Copy \(prevKey) → Here")
+                                Text(L10n.tf("worksheet.copyPrevHere", ["prev": prevKey]))
                             }
                         }
                         .buttonStyle(.zenOutline)
-                        .help("Copy values from previous month (\(prevKey)) into this month (\(summary.monthKey))")
+                        .help(L10n.tf("worksheet.copyPrevHereTip", ["prev": prevKey, "curr": summary.monthKey]))
 
                         Button { requestCopy(.currentToNext) } label: {
                             HStack(spacing: 6) {
                                 ZIcon("arrow.right", size: 14).foregroundStyle(Zen.positive)
-                                Text("Copy into Next Month (\(nextKey))")
+                                Text(L10n.tf("worksheet.copyNextMonth", ["next": nextKey]))
                             }
                         }
                         .buttonStyle(.zenOutline)
-                        .help("Copy this month's values (\(summary.monthKey)) into next month (\(nextKey))")
+                        .help(L10n.tf("worksheet.copyNextMonthTip", ["curr": summary.monthKey, "next": nextKey]))
 
                         Button { requestCopy(.allMonths) } label: {
                             HStack(spacing: 6) {
                                 ZIcon("doc.on.doc", size: 14).foregroundStyle(Zen.positive)
-                                Text("Apply to All 12 Months")
+                                Text(L10n.t("worksheet.applyAll12"))
                             }
                         }
                         .buttonStyle(.zenOutline)
-                        .help("Copy this month's planned Budget amounts across all 12 months of the year")
+                        .help(L10n.t("worksheet.applyAll12Tip"))
 
                         Button { showNewGroupForm.toggle() } label: {
                             HStack(spacing: 6) {
                                 ZIcon("folder.badge.plus", size: 14)
-                                Text("New Category Group")
+                                Text(L10n.t("worksheet.newGroup"))
                             }
                         }
                         .buttonStyle(.zenInk)
@@ -152,7 +152,7 @@ struct MonthlyWorksheetView: View {
                 }
 
                 if summary.groups.isEmpty {
-                    Text("No category groups yet. Use “New Category Group” to start your worksheet.")
+                    Text(L10n.t("worksheet.emptyGroups"))
                         .font(.zen(12))
                         .foregroundStyle(Zen.ink3)
                         .frame(maxWidth: .infinity)
@@ -177,15 +177,15 @@ struct MonthlyWorksheetView: View {
         .alert(item: $pendingDelete) { target in
             switch target {
             case .category(let id, let name):
-                return Alert(title: Text("Delete category “\(name)”?"),
-                             message: Text("Its monthly values and transactions are deleted too."),
-                             primaryButton: .destructive(Text("Delete")) { store.deleteCategory(id) },
-                             secondaryButton: .cancel())
+                return Alert(title: Text(L10n.tf("worksheet.deleteCatAlertTitle", ["name": L10n.categoryName(name)])),
+                             message: Text(L10n.t("worksheet.deleteCatAlertMsg")),
+                             primaryButton: .destructive(Text(L10n.t("common.delete"))) { store.deleteCategory(id) },
+                             secondaryButton: .cancel(Text(L10n.t("common.cancel"))))
             case .group(let id, let name):
-                return Alert(title: Text("Delete the “\(name)” group?"),
-                             message: Text("All categories inside it, their monthly values and transactions are deleted too."),
-                             primaryButton: .destructive(Text("Delete")) { store.deleteGroup(id) },
-                             secondaryButton: .cancel())
+                return Alert(title: Text(L10n.tf("worksheet.deleteGrpAlertTitle", ["name": L10n.groupName(name)])),
+                             message: Text(L10n.t("worksheet.deleteGrpAlertMsg")),
+                             primaryButton: .destructive(Text(L10n.t("common.delete"))) { store.deleteGroup(id) },
+                             secondaryButton: .cancel(Text(L10n.t("common.cancel"))))
             }
         }
     }
@@ -238,7 +238,7 @@ struct MonthlyWorksheetView: View {
             mode: mode,
             source: mode == .prevToCurrent ? adjacentKey(-1) : current,
             target: mode == .prevToCurrent ? current
-                : mode == .currentToNext ? adjacentKey(1) : "All 12 Months (\(s.activeYear))",
+                : mode == .currentToNext ? adjacentKey(1) : L10n.tf("worksheet.copyModalAll12Target", ["year": String(s.activeYear)]),
             scope: s.monthCopyScope ?? .budgetsAndActuals,
             overwriteExisting: s.monthCopyOverwriteExisting ?? true,
             navigateToTarget: mode == .currentToNext
@@ -281,13 +281,13 @@ private struct GroupHeader: View {
         HStack(spacing: Cols.gap) {
             HStack(spacing: 8) {
                 Circle().fill(Color(hexString: gs.group.color)).frame(width: 10, height: 10)
-                Text(gs.group.name.uppercased())
+                Text(L10n.groupName(gs.group).uppercased())
                     .font(.zen(11, .semibold))
                     .tracking(0.9)
                     .foregroundStyle(Zen.ink)
                     .lineLimit(1)
                 if showMode {
-                    Text(gs.group.mode.rawValue.uppercased())
+                    Text((gs.group.mode == .home ? L10n.t("workspace.home") : L10n.t("workspace.freelancer")).uppercased())
                         .font(.zen(9))
                         .foregroundStyle(Zen.ink3)
                         .lineLimit(1)
@@ -297,12 +297,12 @@ private struct GroupHeader: View {
                 }
                 Spacer(minLength: 0)
             }
-            headerLabel("Budget")
-            headerLabel("Actual")
-            headerLabel("Diff.").padding(.trailing, 4)
+            headerLabel(L10n.t("finance.budget"))
+            headerLabel(L10n.t("finance.actual"))
+            headerLabel(L10n.t("worksheet.diffShort")).padding(.trailing, 4)
             HStack(spacing: 2) {
-                ZenMiniButton(icon: "plus", size: 14, tint: Zen.ink2, help: "Add category to this group", action: onAdd)
-                ZenMiniButton(icon: "trash", size: 12, hoverTint: Zen.accent, help: "Delete entire group", action: onDelete)
+                ZenMiniButton(icon: "plus", size: 14, tint: Zen.ink2, help: L10n.t("worksheet.addCategoryTip"), action: onAdd)
+                ZenMiniButton(icon: "trash", size: 12, hoverTint: Zen.accent, help: L10n.t("worksheet.deleteGroupTip"), action: onDelete)
             }
             .frame(width: Cols.actions, alignment: .trailing)
         }
@@ -331,17 +331,17 @@ private struct AddCategoryForm: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            TextField("", text: $newName, prompt: Text("New category name…").foregroundStyle(Zen.ink3))
+            TextField("", text: $newName, prompt: Text(L10n.t("worksheet.newCategoryPlaceholder")).foregroundStyle(Zen.ink3))
                 .zenField(height: 28, background: Zen.surface)
                 .onSubmit(create)
-            TextField("", text: $newBudget, prompt: Text("Budget (0)").foregroundStyle(Zen.ink3))
+            TextField("", text: $newBudget, prompt: Text(L10n.t("worksheet.budgetZeroPlaceholder")).foregroundStyle(Zen.ink3))
                 .multilineTextAlignment(.trailing)
                 .zenAmount()
                 .zenField(height: 28, background: Zen.surface)
                 .frame(width: 96)
                 .onSubmit(create)
-            Button("Add", action: create).buttonStyle(.zen(.ink, height: 28, radius: 4, padding: 10))
-            Button("Cancel", action: onDone).buttonStyle(.zen(.ghost, height: 28, radius: 4, padding: 8))
+            Button(L10n.t("common.add"), action: create).buttonStyle(.zen(.ink, height: 28, radius: 4, padding: 10))
+            Button(L10n.t("common.cancel"), action: onDone).buttonStyle(.zen(.ghost, height: 28, radius: 4, padding: 8))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -365,7 +365,7 @@ private struct GroupFooter: View {
 
     var body: some View {
         HStack(spacing: Cols.gap) {
-            Text("Total \(gs.group.name)").foregroundStyle(Zen.ink).lineLimit(1)
+            Text(L10n.tf("worksheet.totalGroup", ["group": L10n.groupName(gs.group)])).foregroundStyle(Zen.ink).lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(KobanFormat.number(gs.totalBudget)).foregroundStyle(Zen.ink2)
                 .padding(.horizontal, 6).frame(width: Cols.value, alignment: .trailing)
@@ -401,12 +401,13 @@ private struct CategoryRow: View {
     var body: some View {
         let cat = row.category
         let recurring = cat.isRecurring ?? false
+        let displayName = L10n.categoryName(cat)
 
         HStack(spacing: Cols.gap) {
             // Name + recurring toggle + badges
             HStack(spacing: 6) {
-                InlineTextField(value: cat.name, cellID: "\(cat.id)#name") { store.renameCategory(cat.id, to: $0) }
-                    .help(cat.name)
+                InlineTextField(value: displayName, cellID: "\(cat.id)#name") { store.renameCategory(cat.id, to: $0) }
+                    .help(displayName)
 
                 // Only built when visible (recurring, or row hovered): fewer views per row.
                 if recurring || hovering {
@@ -418,22 +419,22 @@ private struct CategoryRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help(recurring ? "Recurring monthly item (click to disable recurring)" : "Mark as recurring monthly item")
+                    .help(L10n.t(recurring ? "worksheet.recurringDisableTip" : "worksheet.recurringEnableTip"))
                 } else {
                     Color.clear.frame(width: 20, height: 20)
                 }
 
                 if row.txCount > 0 && row.directActual == nil {
-                    Text("\(row.txCount)tx")
+                    Text(L10n.tf("worksheet.txCountSuffix", ["count": row.txCount]))
                         .font(.zen(10)).zenAmount()
                         .foregroundStyle(Zen.ink3)
                         .padding(.horizontal, 6).padding(.vertical, 1)
                         .background(Zen.raised, in: RoundedRectangle(cornerRadius: 4))
-                        .help("\(row.txCount) logged transaction(s)")
+                        .help(L10n.tf("worksheet.txCountTip", ["count": row.txCount]))
                 }
                 if row.directActual != nil {
                     ZenMiniButton(icon: "arrow.counterclockwise", size: 12,
-                                  help: "Manual actual override active — click to revert to transaction sum") {
+                                  help: L10n.t("worksheet.manualActualTip")) {
                         store.setDirectActual(nil, categoryId: cat.id)
                     }
                 }
@@ -471,10 +472,10 @@ private struct CategoryRow: View {
             // carries its own hover tracking, which was a large part of the scroll cost).
             HStack(spacing: 4) {
                 if hovering {
-                    ZenMiniButton(icon: "receipt", size: 12, help: "Log transaction in this category") {
+                    ZenMiniButton(icon: "receipt", size: 12, help: L10n.t("worksheet.logTxTip")) {
                         store.openQuickAdd(categoryId: cat.id)
                     }
-                    ZenMiniButton(icon: "trash", size: 12, hoverTint: Zen.accent, help: "Delete category", action: onDelete)
+                    ZenMiniButton(icon: "trash", size: 12, hoverTint: Zen.accent, help: L10n.t("worksheet.deleteCategoryTip"), action: onDelete)
                 }
             }
             .frame(width: Cols.actions, height: 20, alignment: .trailing)
@@ -498,8 +499,8 @@ private struct CategoryRow: View {
         var parts: [String] = []
         // Raw numbers like `${taxRate}%` in the Windows build (8.1, not 8.10).
         func raw(_ v: Double) -> String { v == v.rounded() ? String(Int(v)) : String(v) }
-        if vat != 0 { parts.append("\(raw(vat))% VAT") }
-        if ded < 100 && ded > 0 { parts.append("\(raw(ded))% Ded.") }
+        if vat != 0 { parts.append("\(raw(vat))% \(L10n.t("worksheet.vatShort"))") }
+        if ded < 100 && ded > 0 { parts.append("\(raw(ded))% \(L10n.t("worksheet.dedShort"))") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
@@ -683,10 +684,10 @@ private struct BudgetSummaryBox: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
-                Text("BUDGET SUMMARY").fontWeight(.semibold).frame(maxWidth: .infinity, alignment: .leading)
-                Text("BUDGET").opacity(0.8).frame(width: col, alignment: .trailing)
-                Text("ACTUAL").opacity(0.8).frame(width: col, alignment: .trailing)
-                Text("DIFFERENCE").opacity(0.8).frame(width: col, alignment: .trailing)
+                Text(L10n.t("worksheet.budgetSummary").uppercased()).fontWeight(.semibold).frame(maxWidth: .infinity, alignment: .leading)
+                Text(L10n.t("finance.budget").uppercased()).opacity(0.8).frame(width: col, alignment: .trailing)
+                Text(L10n.t("finance.actual").uppercased()).opacity(0.8).frame(width: col, alignment: .trailing)
+                Text(L10n.t("worksheet.difference").uppercased()).opacity(0.8).frame(width: col, alignment: .trailing)
             }
             .font(.zen(11))
             .tracking(0.9)
@@ -695,15 +696,15 @@ private struct BudgetSummaryBox: View {
             .padding(.vertical, 10)
             .background(Zen.ink)
 
-            row("Total Income", summary.incomeBudget, summary.incomeActual, summary.incomeDifference, actualColor: Zen.positive)
+            row(L10n.t("sidebar.totalIncome"), summary.incomeBudget, summary.incomeActual, summary.incomeDifference, actualColor: Zen.positive)
             Rectangle().fill(Zen.line).frame(height: 1)
-            row("Total Expenses", summary.totalOutflowBudget, summary.totalOutflowActual, summary.totalOutflowDifference, actualColor: Zen.ink)
+            row(L10n.t("sidebar.totalExpenses"), summary.totalOutflowBudget, summary.totalOutflowActual, summary.totalOutflowDifference, actualColor: Zen.ink)
             Rectangle().fill(Zen.line).frame(height: 1)
 
             HStack(spacing: 6) {
                 HStack(spacing: 8) {
-                    Text("NET").foregroundStyle(Zen.ink)
-                    Text("\(String(format: "%.1f", summary.savingsRatePct))% retained")
+                    Text(L10n.t("finance.net").uppercased()).foregroundStyle(Zen.ink)
+                    Text(L10n.tf("worksheet.retainedPct", ["pct": String(format: "%.1f", summary.savingsRatePct)]))
                         .font(.zen(11))
                         .zenAmount()
                         .foregroundStyle(Zen.ink2)
@@ -756,12 +757,12 @@ private struct FreelancerStrip: View {
 
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: columns), spacing: 12) {
-            card("Gross Revenue", summary.incomeActual, Zen.positive,
-                 "VAT Collected: \(KobanFormat.currency(summary.vatCollected, code: currency))")
-            card("Deductible Business Expenses", summary.deductibleExpensesActual, Zen.indigo,
-                 "Input VAT Paid: \(KobanFormat.currency(summary.vatPaidOnExpenses, code: currency))")
-            card("Net VAT / MWST Payable", summary.netVatPayable, Zen.ink, "Output VAT − Input Tax Credit")
-            card("Est. Income Tax Set-Aside", summary.estimatedTaxReserve, Zen.warning, "Based on net operating profit")
+            card(L10n.t("worksheet.grossRevenue"), summary.incomeActual, Zen.positive,
+                 L10n.tf("worksheet.vatCollected", ["amount": KobanFormat.currency(summary.vatCollected, code: currency)]))
+            card(L10n.t("worksheet.deductibleExp"), summary.deductibleExpensesActual, Zen.indigo,
+                 L10n.tf("worksheet.inputVatPaid", ["amount": KobanFormat.currency(summary.vatPaidOnExpenses, code: currency)]))
+            card(L10n.t("worksheet.netVatPayable"), summary.netVatPayable, Zen.ink, L10n.t("worksheet.vatFormula"))
+            card(L10n.t("worksheet.estTaxSetAside"), summary.estimatedTaxReserve, Zen.warning, L10n.t("worksheet.basedOnNetProfit"))
         }
     }
 
@@ -786,16 +787,14 @@ private struct CarryOverBanner: View {
     var body: some View {
         HStack(spacing: 12) {
             ZIcon("doc.on.doc").foregroundStyle(Zen.indigo)
-            (Text(monthKey).bold() + Text(" has no budget or actual values yet, while previous month ")
-                + Text(prevKey).bold() + Text(" has configured values. Would you like to copy last month's values into ")
-                + Text(monthKey).bold() + Text("?"))
+            Text(L10n.tf("worksheet.carryOverBefore", ["curr": monthKey, "prev": prevKey]))
                 .font(.zen(12))
                 .foregroundStyle(Zen.ink)
             Spacer(minLength: 8)
             Button(action: action) {
                 HStack(spacing: 6) {
                     ZIcon("doc.on.doc", size: 14)
-                    Text("Copy \(prevKey) Values…").fontWeight(.medium)
+                    Text(L10n.tf("worksheet.copyPrevValuesBtn", ["prev": prevKey])).fontWeight(.medium)
                 }
             }
             .buttonStyle(.zen(.ink, padding: 14))
@@ -818,27 +817,27 @@ private struct NewGroupForm: View {
 
     var body: some View {
         FlowLayout(spacing: 12, alignment: .bottom) {
-            field("Group Name") {
-                TextField("", text: $name, prompt: Text("e.g. REAL ESTATE, SIDE PROJECT, PETS").foregroundStyle(Zen.ink3))
+            field(L10n.t("worksheet.groupNameLabel")) {
+                TextField("", text: $name, prompt: Text(L10n.t("worksheet.groupNamePlaceholder")).foregroundStyle(Zen.ink3))
                     .zenField()
                     .frame(minWidth: 220, idealWidth: 280)
                     .focused($nameFocused)
                     .onSubmit(create)
             }
             if workspace == .combined {
-                field("Ledger Mode") {
-                    ZenSelect(options: [(LedgerMode.home, "Home Budget"), (.freelancer, "Freelancer")], selection: $mode)
+                field(L10n.t("worksheet.ledgerModeLabel")) {
+                    ZenSelect(options: [(LedgerMode.home, L10n.t("onboarding.home")), (.freelancer, L10n.t("workspace.freelancer"))], selection: $mode)
                 }
             }
-            field("Type") {
-                ZenSelect(options: [(CategoryKind.expense, "Expense Group"), (.income, "Income Group"),
-                                    (.savings, "Savings / Reserve")], selection: $kind)
+            field(L10n.t("worksheet.typeLabel")) {
+                ZenSelect(options: [(CategoryKind.expense, L10n.t("worksheet.expenseGroupOpt")), (.income, L10n.t("worksheet.incomeGroupOpt")),
+                                    (.savings, L10n.t("worksheet.savingsGroupOpt"))], selection: $kind)
             }
-            field("Worksheet Column") {
-                ZenSelect(options: [(0, "Left Column"), (1, "Right Column")], selection: $column)
+            field(L10n.t("worksheet.columnLabel")) {
+                ZenSelect(options: [(0, L10n.t("worksheet.leftColumnOpt")), (1, L10n.t("worksheet.rightColumnOpt"))], selection: $column)
             }
-            Button("Create Group", action: create).buttonStyle(.zen(.ink, padding: 16)).fontWeight(.medium)
-            Button("Cancel", action: onClose).buttonStyle(.zen(.ghost))
+            Button(L10n.t("worksheet.createGroupBtn"), action: create).buttonStyle(.zen(.ink, padding: 16)).fontWeight(.medium)
+            Button(L10n.t("common.cancel"), action: onClose).buttonStyle(.zen(.ghost))
         }
         .zenCard(padding: 16)
         .onAppear {
@@ -877,7 +876,7 @@ struct MonthCopyModal: View {
                 HStack {
                     HStack(spacing: 8) {
                         ZIcon("exclamationmark.triangle").foregroundStyle(Zen.accent)
-                        Text("Confirm Copying Monthly Values").font(.zen(14, .medium)).foregroundStyle(Zen.ink)
+                        Text(L10n.t("worksheet.copyModalTitle")).font(.zen(14, .medium)).foregroundStyle(Zen.ink)
                     }
                     Spacer()
                     ZenMiniButton(icon: "xmark", size: 16) { store.copyRequest = nil }
@@ -888,8 +887,7 @@ struct MonthCopyModal: View {
                 .overlay(alignment: .bottom) { Rectangle().fill(Zen.line).frame(height: 1) }
 
                 VStack(alignment: .leading, spacing: 16) {
-                    (Text("Are you sure you want to copy values from ") + Text(request.source).fontWeight(.semibold)
-                        + Text(" into ") + Text(request.target).fontWeight(.semibold) + Text("?"))
+                    Text(L10n.tf("worksheet.copyModalPrompt", ["source": request.source, "target": request.target]))
                         .font(.zen(12))
                         .foregroundStyle(Zen.ink)
                         .lineSpacing(3)
@@ -897,16 +895,16 @@ struct MonthCopyModal: View {
                     if request.mode != .allMonths {
                         VStack(alignment: .leading, spacing: 12) {
                             VStack(alignment: .leading, spacing: 6) {
-                                Text("Values to Copy").font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
-                                ZenSelect(options: [(MonthCopyScope.budgetsAndActuals, "Both Planned Budgets & Direct Actuals"),
-                                                    (.budgetsOnly, "Planned Budgets Only (Leave Actuals at 0)")],
+                                Text(L10n.t("worksheet.copyModalScopeLabel")).font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
+                                ZenSelect(options: [(MonthCopyScope.budgetsAndActuals, L10n.t("onboarding.s4.copyScopeBoth")),
+                                                    (.budgetsOnly, L10n.t("onboarding.s4.copyScopeBudgetsOnly"))],
                                           selection: $request.scope, background: Zen.surface)
                             }
                             ZenCheckbox(isOn: $request.overwriteExisting,
-                                        label: "Overwrite existing non-zero entries in \(request.target)")
+                                        label: L10n.tf("worksheet.copyModalOverwrite", ["target": request.target]))
                             if request.mode == .currentToNext {
                                 ZenCheckbox(isOn: $request.navigateToTarget,
-                                            label: "Switch active month to \(request.target) after copying")
+                                            label: L10n.tf("worksheet.copyModalSwitchMonth", ["target": request.target]))
                             }
                         }
                         .padding(14)
@@ -916,7 +914,7 @@ struct MonthCopyModal: View {
                     }
 
                     ZenCheckbox(isOn: $dontAskAgain,
-                                label: "Don't ask for confirmation again (can be changed in Settings)",
+                                label: L10n.t("worksheet.copyModalDontAsk"),
                                 fontSize: 11, color: Zen.ink3)
                         .padding(.top, 4)
                 }
@@ -924,7 +922,7 @@ struct MonthCopyModal: View {
 
                 HStack(spacing: 10) {
                     Spacer()
-                    Button("Cancel") { store.copyRequest = nil }
+                    Button(L10n.t("common.cancel")) { store.copyRequest = nil }
                         .buttonStyle(.zen(.outline, padding: 14))
                         .keyboardShortcut(.cancelAction)
                     Button {
@@ -933,7 +931,7 @@ struct MonthCopyModal: View {
                     } label: {
                         HStack(spacing: 6) {
                             ZIcon("doc.on.doc", size: 14)
-                            Text("Yes, Copy Values").fontWeight(.medium)
+                            Text(L10n.t("worksheet.copyModalConfirmBtn")).fontWeight(.medium)
                         }
                     }
                     .buttonStyle(.zen(.ink, padding: 16))

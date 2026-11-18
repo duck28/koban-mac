@@ -89,7 +89,7 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.zen(.raised, height: 32, radius: 8, padding: 14))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
-                .help("Lock Koban immediately (⌘L)")
+                .help(L10n.t("settings.lockNowTip").replacingOccurrences(of: "Ctrl+", with: "⌘"))
 
                 Button { store.openSetupWizard() } label: {
                     HStack(spacing: 6) {
@@ -123,7 +123,7 @@ struct SettingsView: View {
         let config = auth.config
         return SettingsSection(
             icon: "touchid", tint: Zen.indigo, title: L10n.t("settings.login.title"),
-            subtitle: "Require authentication when opening Koban using Touch ID or a Master Passphrase"
+            subtitle: L10n.t("settings.login.descMac")
         ) {
             HStack(spacing: 4) {
                 ZIcon("checkmark.circle", size: 12)
@@ -141,27 +141,29 @@ struct SettingsView: View {
 
             SettingsEqualColumns {
                 SettingsToggleRow(title: L10n.t("settings.login.require"),
-                                  detail: "Lock the ledger behind Touch ID or Master Passphrase on startup.",
+                                  detail: L10n.t("settings.login.requireDesc"),
                                   isOn: authBinding(\.enabled))
-                SettingsToggleRow(title: "Auto-prompt Touch ID on launch",
-                                  detail: "Automatically open the Touch ID prompt as soon as the lock screen appears.",
+                SettingsToggleRow(title: L10n.t("settings.login.autoPrompt"),
+                                  detail: L10n.t("settings.login.autoPromptDesc"),
                                   isOn: authBinding(\.autoPromptPasskeyOnLaunch))
             }
 
             SettingsEqualColumns {
                 VStack(alignment: .leading, spacing: 4) {
-                    SettingsFieldLabel("Account Owner Display Name", weight: .medium)
-                    SettingsTextField(placeholder: "e.g. Roland", text: authBinding(\.userDisplayName))
+                    SettingsFieldLabel(L10n.t("settings.login.ownerName"), weight: .medium)
+                    SettingsTextField(placeholder: L10n.t("settings.login.ownerPlaceholder"), text: authBinding(\.userDisplayName))
                 }
                 .padding(12)
                 .background(Zen.app, in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    SettingsFieldLabel("Inactivity Auto-Lock Timer", weight: .medium)
-                    SettingsMenuField(options: [(0, "Never auto-lock while open"), (5, "Lock after 5 minutes idle"),
-                                                (15, "Lock after 15 minutes idle"), (30, "Lock after 30 minutes idle"),
-                                                (60, "Lock after 60 minutes idle")],
+                    SettingsFieldLabel(L10n.t("settings.login.autoLock"), weight: .medium)
+                    SettingsMenuField(options: [(0, L10n.t("settings.login.autoLockNever")),
+                                                (5, L10n.t("settings.login.autoLock5")),
+                                                (15, L10n.t("settings.login.autoLock15")),
+                                                (30, L10n.t("settings.login.autoLock30")),
+                                                (60, L10n.t("settings.login.autoLock60"))],
                                       selection: authBinding(\.autoLockMinutes), background: Zen.surface)
                 }
                 .padding(12)
@@ -178,8 +180,8 @@ struct SettingsView: View {
         let count = config.passkeys.count
         return VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 1) {
-                Text("Enrolled Touch ID & Passkey Credentials (\(count))").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
-                Text("Register Touch ID (or your Mac login password) on this Mac. Windows Hello / Passkey credentials enrolled on Windows are kept for Windows.")
+                Text(L10n.tf("settings.login.enrolledTitleMac", ["count": count])).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                Text(L10n.t("settings.login.enrolledDescMac"))
                     .font(.zen(11)).foregroundStyle(Zen.ink2).fixedSize(horizontal: false, vertical: true)
             }
 
@@ -187,38 +189,38 @@ struct SettingsView: View {
                 VStack(spacing: 6) {
                     ForEach(config.passkeys) { pk in
                         credentialRow(name: pk.name,
-                                      detail: "\(pk.isWindowsHelloNative ? "Touch ID on Mac · Windows Hello on Windows" : "WebAuthn FIDO2 Passkey · Windows only") • Added \(Self.date(pk.createdAt))",
+                                      detail: "\(pk.isWindowsHelloNative ? L10n.t("settings.login.nativeVerifierMac") : L10n.t("settings.login.webauthnVerifierMac")) • \(L10n.t("settings.login.addedPrefix")) \(Self.date(pk.createdAt))",
                                       icon: pk.isWindowsHelloNative ? "laptopcomputer" : "key.horizontal") {
                             var next = auth.config
                             next.passkeys.removeAll { $0.id == pk.id }
                             store.updateAuthConfig(next)
                             if !auth.hasMacCredential { TouchIDKeychain.removeSecret(account: auth.account) }
-                            authStatusMsg = "Removed Passkey credential."
+                            authStatusMsg = L10n.t("settings.login.removedPasskey")
                         }
                     }
                 }
             } else {
-                Text("No Touch ID or Passkey credential registered yet.")
+                Text(L10n.t("settings.login.noneEnrolledMac"))
                     .font(.zen(12)).foregroundStyle(Zen.ink3).padding(.vertical, 4)
             }
 
             HStack(alignment: .bottom, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
-                    SettingsFieldLabel("Credential Label", size: 10, color: Zen.ink3)
-                    SettingsTextField(placeholder: "e.g. Touch ID (MacBook Pro)", text: $newCredentialLabel)
+                    SettingsFieldLabel(L10n.t("settings.login.credLabel"), size: 10, color: Zen.ink3)
+                    SettingsTextField(placeholder: L10n.t("settings.login.credPlaceholderMac"), text: $newCredentialLabel)
                 }
                 .frame(minWidth: 160, maxWidth: .infinity)
 
                 Button { Task { await registerTouchID() } } label: {
                     HStack(spacing: 6) {
                         ZIcon("plus", size: 14)
-                        Text("Enroll Touch ID").fontWeight(.medium)
+                        Text(L10n.t("settings.login.enrollBtn")).fontWeight(.medium)
                     }
                 }
                 .buttonStyle(.zen(.ink, height: 32, radius: 8, padding: 14))
                 .disabled(isRegisteringPasskey || !TouchIDKeychain.anyAuthAvailable)
-                .help(TouchIDKeychain.anyAuthAvailable ? "Stores a Touch ID-protected unlock key for this vault in your Keychain"
-                                                       : "Touch ID / device authentication is not available on this Mac")
+                .help(TouchIDKeychain.anyAuthAvailable ? L10n.t("settings.login.enrollTouchIdHelp")
+                                                       : L10n.t("settings.login.touchIdUnavailableHelp"))
             }
             .padding(.top, 4)
         }
@@ -248,23 +250,23 @@ struct SettingsView: View {
     private func masterPassphraseForm(_ config: AuthConfig) -> some View {
         HStack(alignment: .bottom, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                SettingsFieldLabel(config.hasMasterPassphrase ? "Update Master Passphrase / PIN (Configured)"
-                                                              : "Set Optional Backup Master Passphrase / PIN", weight: .medium)
-                SettingsTextField(icon: "key", placeholder: "Enter new Master Passphrase or PIN…", text: $newPassphrase,
+                SettingsFieldLabel(config.hasMasterPassphrase ? L10n.t("settings.login.updatePassphraseLabel")
+                                                              : L10n.t("settings.login.setPassphraseLabel"), weight: .medium)
+                SettingsTextField(icon: "key", placeholder: L10n.t("settings.login.passphrasePlaceholder"), text: $newPassphrase,
                                   secure: true, onSubmit: setMasterPassphrase)
             }
             .frame(minWidth: 180, maxWidth: .infinity)
 
             Button(action: setMasterPassphrase) {
-                Text(config.hasMasterPassphrase ? "Update Passphrase" : "Save Passphrase").fontWeight(.medium)
+                Text(config.hasMasterPassphrase ? L10n.t("settings.login.updatePassphraseBtn") : L10n.t("settings.login.savePassphraseBtn")).fontWeight(.medium)
             }
             .buttonStyle(.zen(.outline, height: 32, radius: 8, padding: 14))
             .disabled(newPassphrase.trimmingCharacters(in: .whitespaces).isEmpty)
 
             if config.hasMasterPassphrase {
-                SettingsDangerButton(title: "Remove Passphrase", height: 32, fontSize: 12) {
+                SettingsDangerButton(title: L10n.t("settings.login.removePassphraseBtn"), height: 32, fontSize: 12) {
                     store.updateAuthConfig(auth.config.withoutMasterPassphrase())
-                    authStatusMsg = "Removed Master Passphrase."
+                    authStatusMsg = L10n.t("settings.login.removedPassphraseMsg")
                 }
             }
         }
@@ -276,12 +278,12 @@ struct SettingsView: View {
     private func setMasterPassphrase() {
         let trimmed = newPassphrase.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= 4 else {
-            authStatusMsg = "Master Passphrase / PIN must be at least 4 characters."
+            authStatusMsg = L10n.t("settings.login.errPassphraseShort")
             return
         }
         store.updateAuthConfig(auth.config.withMasterPassphrase(trimmed))
         newPassphrase = ""
-        authStatusMsg = "Updated Master Passphrase / PIN."
+        authStatusMsg = L10n.t("settings.login.updatedPassphraseMsg")
     }
 
     private func registerTouchID() async {
@@ -298,9 +300,9 @@ struct SettingsView: View {
             next.enabled = true
             next.passkeys.append(record)
             store.updateAuthConfig(next)
-            authStatusMsg = "Enrolled \"\(record.name)\" successfully."
+            authStatusMsg = L10n.tf("settings.login.enrollSuccess", ["name": record.name])
         } catch {
-            authStatusMsg = error.localizedDescription.isEmpty ? "Touch ID registration failed." : error.localizedDescription
+            authStatusMsg = error.localizedDescription.isEmpty ? L10n.t("settings.login.enrollFailed") : error.localizedDescription
         }
     }
 
@@ -312,27 +314,27 @@ struct SettingsView: View {
 
     private var copySection: some View {
         SettingsSection(icon: "doc.on.doc", tint: Zen.positive, title: L10n.t("settings.copy.title"),
-                        subtitle: "Control how Koban copies last month's values into the next month and when confirmation prompts appear") {
+                        subtitle: L10n.t("settings.copy.desc")) {
             VStack(spacing: 12) {
-                SettingsToggleRow(title: "Ask for confirmation before copying values between months",
-                                  detail: "When enabled, Koban always asks if you are sure before copying last month's values into the next month or across all 12 months.",
+                SettingsToggleRow(title: L10n.t("settings.copy.confirmTitle"),
+                                  detail: L10n.t("settings.copy.confirmDesc"),
                                   isOn: setting(\.confirmBeforeMonthCopy, default: true))
-                SettingsToggleRow(title: "Show carry-over prompt when viewing an empty month",
-                                  detail: "When navigating to a month with 0.00 budgets and actuals, display a quick prompt to copy the previous month's values.",
+                SettingsToggleRow(title: L10n.t("settings.copy.autoPromptTitle"),
+                                  detail: L10n.t("settings.copy.autoPromptDesc"),
                                   isOn: setting(\.autoPromptCopyOnEmptyMonth, default: true))
-                SettingsToggleRow(title: "Overwrite existing non-zero values in target month by default",
-                                  detail: "If disabled, copying a month will only fill categories that are currently 0.00 in the target month.",
+                SettingsToggleRow(title: L10n.t("settings.copy.overwriteTitle"),
+                                  detail: L10n.t("settings.copy.overwriteDesc"),
                                   isOn: setting(\.monthCopyOverwriteExisting, default: true))
 
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Default Values to Copy Between Months").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
-                        Text("Choose whether copying last month carries over only Planned Budgets or both Budgets and Direct Actuals.")
+                        Text(L10n.t("settings.copy.scopeTitle")).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                        Text(L10n.t("settings.copy.scopeDesc"))
                             .font(.zen(11)).foregroundStyle(Zen.ink2).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
-                    ZenSelect(options: [(MonthCopyScope.budgetsAndActuals, "Copy Both Planned Budgets & Direct Actuals"),
-                                        (MonthCopyScope.budgetsOnly, "Copy Planned Budgets Only (Reset Actuals)")],
+                    ZenSelect(options: [(MonthCopyScope.budgetsAndActuals, L10n.t("settings.copy.scopeBoth")),
+                                        (MonthCopyScope.budgetsOnly, L10n.t("settings.copy.scopeBudgetsOnly"))],
                               selection: Binding(get: { settings.monthCopyScope ?? .budgetsAndActuals },
                                                  set: { v in store.applySettingsChange { $0.monthCopyScope = v } }),
                               background: Zen.surface)
@@ -348,16 +350,16 @@ struct SettingsView: View {
 
     private var importSection: some View {
         SettingsSection(icon: "slider.horizontal.3", tint: Zen.indigo, title: L10n.t("settings.import.title"),
-                        subtitle: "Control import data preview & confirmation prompts, table visibility, and deletion safety") {
+                        subtitle: L10n.t("settings.import.desc")) {
             SettingsToggleRow(title: L10n.t("settings.import.preview"),
-                              detail: "When enabled, importing an Excel workbook, CSV budget sheet, transaction statement, or encrypted database backup shows a detailed preview table of parsed categories, amounts, or transactions and asks for your confirmation before modifying the ledger.",
+                              detail: L10n.t("settings.import.previewDesc"),
                               isOn: setting(\.confirmAndPreviewBeforeImport, default: true))
             SettingsEqualColumns {
-                SettingsToggleRow(title: "Ask for confirmation before deleting categories, groups, or accounts",
-                                  detail: "Prevents accidental removal of categories or financial accounts that have historical data.",
+                SettingsToggleRow(title: L10n.t("settings.import.confirmDeleteTitle"),
+                                  detail: L10n.t("settings.import.confirmDeleteDesc"),
                                   isOn: setting(\.confirmBeforeDelete, default: true))
-                SettingsToggleRow(title: "Hide 0.00 rows by default in Monthly Worksheet",
-                                  detail: "Start the Monthly Budget worksheet with inactive (0 budget & 0 actual) categories collapsed.",
+                SettingsToggleRow(title: L10n.t("settings.import.hideZeroTitle"),
+                                  detail: L10n.t("settings.import.hideZeroDesc"),
                                   isOn: setting(\.defaultHideZeroRows, default: false))
             }
         }
@@ -367,13 +369,13 @@ struct SettingsView: View {
 
     private var workspaceSection: some View {
         SettingsSection(icon: "globe", tint: Zen.accent, title: L10n.t("settings.workspace.title"),
-                        subtitle: "Regional currency formatting, Freelancer VAT/Tax reserve rates, and Washi/Sumi theme") {
+                        subtitle: L10n.t("settings.workspace.desc")) {
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
-                    SettingsFieldLabel("Enabled Profile Mode")
-                    SettingsMenuField(options: [(ProfileSetupMode.both, "Both (Home + Freelancer)"),
-                                                (.home, "Home Budget Only"),
-                                                (.freelancer, "Freelancer / Business Only")],
+                    SettingsFieldLabel(L10n.t("settings.workspace.profileMode"))
+                    SettingsMenuField(options: [(ProfileSetupMode.both, L10n.t("settings.workspace.modeBoth")),
+                                                (.home, L10n.t("settings.workspace.modeHome")),
+                                                (.freelancer, L10n.t("settings.workspace.modeFreelancer"))],
                                       selection: Binding(get: { settings.setupMode }, set: { mode in
                                           store.applySettingsChange {
                                               $0.setupMode = mode
@@ -386,15 +388,15 @@ struct SettingsView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     SettingsFieldLabel(L10n.t("settings.currency"))
-                    SettingsMenuField(options: [("CHF", "CHF — Swiss Franc"), ("EUR", "EUR (€) — Euro"),
-                                                ("USD", "USD ($) — US Dollar"), ("GBP", "GBP (£) — British Pound"),
-                                                ("JPY", "JPY (¥) — Japanese Yen")],
+                    SettingsMenuField(options: [("CHF", L10n.t("settings.currency.chf")), ("EUR", L10n.t("settings.currency.eur")),
+                                                ("USD", L10n.t("settings.currency.usd")), ("GBP", L10n.t("settings.currency.gbp")),
+                                                ("JPY", L10n.t("settings.currency.jpy"))],
                                       selection: setting(\.currency), height: 36)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    SettingsFieldLabel("Default Freelancer VAT %")
+                    SettingsFieldLabel(L10n.t("onboarding.s1.vatLabel"))
                     SettingsNumberField(icon: "plus.forwardslash.minus", value: settings.defaultVatRate) { v in
                         store.applySettingsChange { $0.defaultVatRate = v }
                     }
@@ -402,7 +404,7 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    SettingsFieldLabel("Tax Reserve Set-Aside %")
+                    SettingsFieldLabel(L10n.t("onboarding.s1.taxReserveLabel"))
                     SettingsNumberField(value: settings.taxReserveRate) { v in
                         store.applySettingsChange { $0.taxReserveRate = v }
                     }
@@ -425,13 +427,13 @@ struct SettingsView: View {
     private var palettes: [PaletteInfo] {
         [
             PaletteInfo(id: .zen, name: L10n.t("settings.palette.default"), desc: L10n.t("settings.palette.defaultDesc"),
-                        swatches: [0xB9432F, 0x3F704D, 0x3F6E8C, 0xB8862D], badge: "Default Zen"),
+                        swatches: [0xB9432F, 0x3F704D, 0x3F6E8C, 0xB8862D], badge: L10n.t("settings.palette.badgeDefault")),
             PaletteInfo(id: .monochrome, name: L10n.t("settings.palette.monochrome"), desc: L10n.t("settings.palette.monochromeDesc"),
-                        swatches: [0x111111, 0x383838, 0x757575, 0xFFFFFF], badge: "Pure B&W"),
+                        swatches: [0x111111, 0x383838, 0x757575, 0xFFFFFF], badge: L10n.t("settings.palette.badgeMono")),
             PaletteInfo(id: .slate, name: L10n.t("settings.palette.slate"), desc: L10n.t("settings.palette.slateDesc"),
-                        swatches: [0x0284C7, 0x059669, 0x3B82F6, 0xD97706], badge: "Arctic Nord"),
+                        swatches: [0x0284C7, 0x059669, 0x3B82F6, 0xD97706], badge: L10n.t("settings.palette.badgeSlate")),
             PaletteInfo(id: .forest, name: L10n.t("settings.palette.forest"), desc: L10n.t("settings.palette.forestDesc"),
-                        swatches: [0x1E5A38, 0x2E7D32, 0x2C6E64, 0xC28100], badge: "Botanical"),
+                        swatches: [0x1E5A38, 0x2E7D32, 0x2C6E64, 0xC28100], badge: L10n.t("settings.palette.badgeForest")),
         ]
     }
 
@@ -468,15 +470,15 @@ struct SettingsView: View {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(L10n.t("settings.density.title")).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
-                        Text("Comfortable spacious layout or compact data density").font(.zen(11)).foregroundStyle(Zen.ink2)
+                        Text(L10n.t("settings.density.desc")).font(.zen(11)).foregroundStyle(Zen.ink2)
                     }
                     Spacer(minLength: 8)
                     HStack(spacing: 4) {
-                        SettingsSegmentButton(title: "Cozy", active: (settings.density ?? .comfortable) == .comfortable,
+                        SettingsSegmentButton(title: L10n.t("settings.density.cozyBtn"), active: (settings.density ?? .comfortable) == .comfortable,
                                               height: 24, horizontalPadding: 8, activeBackground: Zen.raised) {
                             store.applySettingsChange { $0.density = .comfortable }
                         }
-                        SettingsSegmentButton(title: "Compact", active: settings.density == .compact,
+                        SettingsSegmentButton(title: L10n.t("settings.density.compactBtn"), active: settings.density == .compact,
                                               height: 24, horizontalPadding: 8, activeBackground: Zen.raised) {
                             store.applySettingsChange { $0.density = .compact }
                         }
@@ -511,22 +513,22 @@ struct SettingsView: View {
 
     private var backupSection: some View {
         SettingsSection(icon: "checkmark.shield", tint: Zen.positive,
-                        title: "AES-256-GCM Database & Auto-Backup Preferences",
-                        subtitle: "Automatic encrypted snapshots to your chosen directory") {
-            SettingsLinkButton(title: "Open Full Vault & Backup Manager →") { store.selectedTab = .backups }
+                        title: L10n.t("settings.backups.title"),
+                        subtitle: L10n.t("settings.backups.desc")) {
+            SettingsLinkButton(title: L10n.t("settings.backups.openManager")) { store.selectedTab = .backups }
         } content: {
             GeometryReader { geo in
                 let unit = (geo.size.width - 12 * 11) / 12
                 HStack(alignment: .bottom, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        SettingsFieldLabel("Automatic Backup Folder Path")
+                        SettingsFieldLabel(L10n.t("settings.backups.folderLabel"))
                         HStack(spacing: 8) {
-                            SettingsTextField(placeholder: "Choose a folder for automatic encrypted backups…",
+                            SettingsTextField(placeholder: L10n.t("settings.backups.folderPlaceholder"),
                                               text: setting(\.backupDir), height: 36, background: Zen.app)
                             Button(action: chooseBackupFolder) {
                                 HStack(spacing: 6) {
                                     ZIcon("folder", size: 14)
-                                    Text("Browse…")
+                                    Text(L10n.t("settings.backups.browse"))
                                 }
                                 .foregroundStyle(Zen.ink)
                             }
@@ -538,7 +540,7 @@ struct SettingsView: View {
                     .frame(width: unit * 7 + 12 * 6)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        SettingsFieldLabel("Max Rolling Snapshots")
+                        SettingsFieldLabel(L10n.t("settings.backups.maxSnapshots"))
                         SettingsNumberField(value: Double(settings.maxBackups), fallback: 20) { v in
                             store.applySettingsChange { $0.maxBackups = max(3, Int(v) == 0 ? 20 : Int(v)) }
                         }
@@ -547,7 +549,7 @@ struct SettingsView: View {
 
                     HStack(spacing: 8) {
                         SettingsCheckbox(isOn: setting(\.autoBackup))
-                        Text("Auto-Backup").font(.zen(12)).foregroundStyle(Zen.ink)
+                        Text(L10n.t("settings.backups.autoBackup")).font(.zen(12)).foregroundStyle(Zen.ink)
                     }
                     .frame(width: unit * 2 + 12, height: 36, alignment: .leading)
                     .contentShape(Rectangle())

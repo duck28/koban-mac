@@ -21,9 +21,9 @@ struct GoalsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Savings Goals, Sinking Funds & Tax Reserves")
+                    Text(L10n.t("goals.title"))
                         .font(.zen(20)).foregroundStyle(Zen.ink)
-                    Text("Track progress toward emergency funds, equipment replacements, and freelancer tax set-asides.")
+                    Text(L10n.t("goals.subtitle"))
                         .font(.zen(12)).foregroundStyle(Zen.ink2)
                 }
 
@@ -50,40 +50,40 @@ struct GoalsView: View {
 
     private var addGoalForm: some View {
         AccFlexWrap(spacing: 12) {
-            AccLabeledField("Goal / Reserve Name") {
-                AccTextField(placeholder: "e.g. Emergency Fund, Tax Provision", text: $name, height: 32,
+            AccLabeledField(L10n.t("goals.nameLabel")) {
+                AccTextField(placeholder: L10n.t("goals.namePlaceholder"), text: $name, height: 32,
                              background: Zen.raised, onSubmit: submit)
             }
             .accFlex(grow: 2, basis: 200, minWidth: 180)
 
-            AccLabeledField("Target (\(currency))") {
+            AccLabeledField(L10n.tf("goals.targetLabel", ["currency": currency])) {
                 AccTextField(placeholder: "10000", text: $targetAmount, height: 32, background: Zen.raised,
                              trailing: true, monospacedDigits: true, onSubmit: submit)
             }
             .accFlex(grow: 1, basis: 110, minWidth: 100)
 
-            AccLabeledField("Saved So Far") {
+            AccLabeledField(L10n.t("goals.savedSoFarLabel")) {
                 AccTextField(placeholder: "0", text: $currentAmount, height: 32, background: Zen.raised,
                              trailing: true, monospacedDigits: true, onSubmit: submit)
             }
             .accFlex(grow: 1, basis: 110, minWidth: 100)
 
-            AccLabeledField("Monthly Plan") {
+            AccLabeledField(L10n.t("goals.monthlyPlanLabel")) {
                 AccTextField(placeholder: "250", text: $monthlyContribution, height: 32, background: Zen.raised,
                              trailing: true, monospacedDigits: true, onSubmit: submit)
             }
             .accFlex(grow: 1, basis: 110, minWidth: 100)
 
             if workspace == .combined {
-                AccLabeledField("Workspace") {
-                    AccSelect(options: [(LedgerMode.home, "Home"), (.freelancer, "Freelancer")],
+                AccLabeledField(L10n.t("sidebar.workspace")) {
+                    AccSelect(options: [(LedgerMode.home, L10n.t("workspace.home")), (.freelancer, L10n.t("workspace.freelancer"))],
                               selection: Binding(get: { mode ?? .home }, set: { mode = $0 }),
                               height: 32, background: Zen.raised)
                 }
                 .accFlex(grow: 1, basis: 115, minWidth: 105)
             }
 
-            AccLabeledField("Target Date") {
+            AccLabeledField(L10n.t("goals.targetDateLabel")) {
                 AccDateField(text: $targetDate)
             }
             .accFlex(grow: 1, basis: 140, minWidth: 135)
@@ -91,7 +91,7 @@ struct GoalsView: View {
             Button(action: submit) {
                 HStack(spacing: 6) {
                     ZIcon("plus", size: 14)
-                    Text("Add Goal").fontWeight(.medium)
+                    Text(L10n.t("goals.addGoalBtn")).fontWeight(.medium)
                 }
             }
             .buttonStyle(.zen(.ink, padding: 16))
@@ -139,13 +139,13 @@ private struct GoalCard: View {
                         .frame(width: 32, height: 32)
                         .overlay { ZIcon("target", size: 16, weight: .regular).foregroundStyle(.white) }
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(goal.name).font(.zen(14, .medium)).foregroundStyle(Zen.ink).lineLimit(1)
-                        Text("\(goal.mode.rawValue) · Target Date: \((goal.targetDate ?? "").isEmpty ? "Flexible" : goal.targetDate!)".uppercased())
+                        Text(L10n.goalName(goal)).font(.zen(14, .medium)).foregroundStyle(Zen.ink).lineLimit(1)
+                        Text("\(L10n.t(goal.mode == .home ? "workspace.home" : "workspace.freelancer")) · \(L10n.t("goals.targetDateLabel")): \((goal.targetDate ?? "").isEmpty ? L10n.t("goals.flexibleDate") : goal.targetDate!)".uppercased())
                             .font(.zen(11)).tracking(0.55).foregroundStyle(Zen.ink3).lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)
-                AccHoverIcon(icon: "trash", size: 14, padding: 6, hoverBackground: Zen.raised, help: "Delete goal",
+                AccHoverIcon(icon: "trash", size: 14, padding: 6, hoverBackground: Zen.raised, help: L10n.t("common.delete"),
                              action: onDelete)
             }
 
@@ -154,7 +154,7 @@ private struct GoalCard: View {
                     Text(KobanFormat.currency(goal.currentAmount, code: currency))
                         .font(.zen(16, .semibold)).monospacedDigit().foregroundStyle(Zen.ink)
                     Spacer(minLength: 8)
-                    Text("of \(KobanFormat.currency(goal.targetAmount, code: currency)) (\(AccountsJS.fixed(progress.pct, 1))%)")
+                    Text(L10n.tf("goals.ofTarget", ["target": KobanFormat.currency(goal.targetAmount, code: currency), "pct": AccountsJS.fixed(progress.pct, 1)]))
                         .font(.zen(12)).monospacedDigit().foregroundStyle(Zen.ink2)
                 }
                 GeometryReader { geo in
@@ -177,7 +177,7 @@ private struct GoalCard: View {
                             onUpdateAmount(goal.currentAmount + goal.monthlyContribution)
                         }
                     }
-                    Text("Balance:").font(.zen(11)).foregroundStyle(Zen.ink3)
+                    Text(L10n.t("goals.balanceLabel")).font(.zen(11)).foregroundStyle(Zen.ink3)
                     GoalBalanceField(value: goal.currentAmount, onChange: onUpdateAmount)
                 }
                 .fixedSize()
@@ -191,11 +191,11 @@ private struct GoalCard: View {
     }
 
     private func statusText(_ p: GoalProgress) -> String {
-        if p.remaining == 0 { return "Goal reached!" }
+        if p.remaining == 0 { return L10n.t("goals.goalReached") }
         if let months = p.monthsToGoal, months != 0 {
-            return "~\(months) mo left at \(KobanFormat.currency(goal.monthlyContribution, code: currency))/mo"
+            return L10n.tf("goals.monthsLeftAt", ["months": months, "amount": KobanFormat.currency(goal.monthlyContribution, code: currency)])
         }
-        return "\(KobanFormat.currency(p.remaining, code: currency)) remaining"
+        return L10n.tf("goals.remaining", ["amount": KobanFormat.currency(p.remaining, code: currency)])
     }
 }
 

@@ -38,16 +38,16 @@ extension ViewTab {
     /// The <h1> of each Windows view.
     var pageTitle: String {
         switch self {
-        case .worksheet: return "Personal Monthly Budget"
-        case .yearlyPlanner: return "Yearly Budget & Account Forecast Planner"
-        case .transactions: return "Transactions & Multi-Account Ledger"
-        case .accounts: return "Accounts & Comprehensive Net Worth Tracker"
-        case .reports: return "Financial Reports, Breakdowns & Charts"
-        case .categories: return "Categories & Structure"
-        case .recurring: return "Recurring Income, Subscriptions & Fixed Costs"
-        case .goals: return "Savings Goals, Sinking Funds & Tax Reserves"
-        case .backups: return "Encrypted Database, Backups & Data Import / Export"
-        case .settings: return "Settings & Behavior"
+        case .worksheet: return L10n.t("worksheet.titleHome")
+        case .yearlyPlanner: return L10n.t("yearly.title")
+        case .transactions: return L10n.t("tx.title")
+        case .accounts: return L10n.t("accounts.title")
+        case .reports: return L10n.t("reports.title")
+        case .categories: return L10n.t("categories.title")
+        case .recurring: return L10n.t("recurring.title")
+        case .goals: return L10n.t("goals.title")
+        case .backups: return L10n.t("backups.title")
+        case .settings: return L10n.t("settings.title")
         }
     }
 

@@ -71,7 +71,7 @@ struct VaultErrorView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Zen.app, in: RoundedRectangle(cornerRadius: 8))
             Button { store.openExistingDatabase() } label: {
-                Text("Open Another Database…").frame(maxWidth: .infinity)
+                Text(L10n.t("lock.openAnotherDb")).frame(maxWidth: .infinity)
             }
             .buttonStyle(.zen(.ink, height: 36, radius: 10))
         } footer: {

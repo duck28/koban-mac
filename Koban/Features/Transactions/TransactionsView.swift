@@ -96,10 +96,10 @@ struct TransactionsView: View {
 
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Transactions & Multi-Account Ledger")
+            Text(L10n.t("tx.title"))
                 .font(.zen(20))
                 .foregroundStyle(Zen.ink)
-            Text("Every entry automatically rolls up into your Monthly Budget Actuals, Account Balances, and Tax Reports.")
+            Text(L10n.t("tx.subtitle"))
                 .font(.zen(12))
                 .foregroundStyle(Zen.ink2)
         }
@@ -108,8 +108,8 @@ struct TransactionsView: View {
     private func headerActions(monthKey: String) -> some View {
         HStack(spacing: 8) {
             HStack(spacing: 0) {
-                TxSegment(label: "This Month (\(monthKey))", active: scopeFilter == .month) { scopeFilter = .month }
-                TxSegment(label: "All Months", active: scopeFilter == .year) { scopeFilter = .year }
+                TxSegment(label: L10n.tf("tx.thisMonth", ["month": monthKey]), active: scopeFilter == .month) { scopeFilter = .month }
+                TxSegment(label: L10n.t("tx.allMonths"), active: scopeFilter == .year) { scopeFilter = .year }
             }
             .padding(2)
             .background(Zen.raised, in: RoundedRectangle(cornerRadius: 8))
@@ -118,7 +118,7 @@ struct TransactionsView: View {
             Button { store.openImport() } label: {
                 HStack(spacing: 6) {
                     ZIcon("square.and.arrow.up", size: 14).foregroundStyle(Zen.indigo)
-                    Text("Import CSV / Excel")
+                    Text(L10n.t("tx.importBtn"))
                 }
             }
             .buttonStyle(.zenOutline)
@@ -126,7 +126,7 @@ struct TransactionsView: View {
             Button { store.exportTransactionsCSV() } label: {
                 HStack(spacing: 6) {
                     ZIcon("arrow.down.doc", size: 14)
-                    Text("Export CSV")
+                    Text(L10n.t("tx.exportBtn"))
                 }
             }
             .buttonStyle(.zenOutline)
@@ -143,24 +143,25 @@ struct TransactionsView: View {
         let categoryGroups: [TxOptionGroup<String>] = state.groups
             .filter { workspace.includes($0.mode) }
             .map { grp in
-                TxOptionGroup(label: "\(grp.name) (\(grp.mode.rawValue.uppercased()))",
-                              options: state.categories
-                                .filter { $0.groupId == grp.id && workspace.includes($0.mode) }
-                                .map { ($0.id, $0.name) })
+                let modeLabel = L10n.t(grp.mode == .home ? "workspace.home" : "workspace.freelancer").uppercased()
+                return TxOptionGroup(label: "\(L10n.groupName(grp)) (\(modeLabel))",
+                                     options: state.categories
+                                        .filter { $0.groupId == grp.id && workspace.includes($0.mode) }
+                                        .map { ($0.id, L10n.categoryName($0)) })
             }
-        let accountOptions: [(String, String)] = [("", "No specific account")]
-            + availableAccounts.map { ($0.id, $0.name) }
+        let accountOptions: [(String, String)] = [("", L10n.t("tx.noSpecificAccount"))]
+            + availableAccounts.map { ($0.id, L10n.accountName($0)) }
 
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("LOG NEW TRANSACTION")
+                Text(L10n.t("tx.logNew").uppercased())
                     .font(.zen(11, .semibold))
                     .tracking(1.1)
                     .foregroundStyle(Zen.ink3)
                 Spacer()
                 if let selectedCat {
                     let income = selectedCat.kind == .income
-                    Text(income ? "Income Entry" : "Expense / Outflow")
+                    Text(L10n.t(income ? "tx.incomeEntry" : "tx.expenseOutflow"))
                         .font(.zen(11, .medium))
                         .foregroundStyle(income ? Zen.positive : Zen.accent)
                         .padding(.horizontal, 8)
@@ -170,24 +171,24 @@ struct TransactionsView: View {
             }
 
             TxGridLayout(columns: columns, spacing: 12) {
-                TxField(label: "Date") { TxDateField(date: $date) }
+                TxField(label: L10n.t("finance.date")) { TxDateField(date: $date) }
 
-                TxField(label: "Category") {
+                TxField(label: L10n.t("finance.category")) {
                     TxSelect(groups: categoryGroups, selection: $categoryId) { handleCategoryChange($0) }
                 }
                 .txGridSpan(2)
 
-                TxField(label: "Account") {
+                TxField(label: L10n.t("finance.account")) {
                     TxSelect(options: accountOptions, selection: $accountId)
                 }
 
-                TxField(label: "Description / Payee") {
-                    TextField("", text: $description, prompt: txPrompt("e.g. Groceries, Client Invoice, Rent"))
+                TxField(label: L10n.t("tx.descPayeeLabel")) {
+                    TextField("", text: $description, prompt: txPrompt(L10n.t("tx.descPlaceholder")))
                         .txInput()
                         .onSubmit(submit)
                 }
 
-                TxField(label: "Amount (\(currency))") {
+                TxField(label: L10n.tf("tx.amountCurrency", ["currency": currency])) {
                     HStack(spacing: 8) {
                         TextField("", text: $amount, prompt: txPrompt("0.00"))
                             .multilineTextAlignment(.trailing)
@@ -196,11 +197,10 @@ struct TransactionsView: View {
                             .focused($amountFocused)
                             .onSubmit(submit)
                             .onChange(of: amount) { _, _ in amountInvalid = false }
-                            .help(amountInvalid ? "Please enter an amount greater than 0." : "")
                         Button(action: submit) {
                             HStack(spacing: 4) {
                                 ZIcon("plus", size: 14)
-                                Text("Add").fontWeight(.medium)
+                                Text(L10n.t("common.add")).fontWeight(.medium)
                             }
                         }
                         .buttonStyle(.zen(.ink, padding: 14))
@@ -212,23 +212,23 @@ struct TransactionsView: View {
             if showFreelancerFields {
                 Rectangle().fill(Zen.line.opacity(0.6)).frame(height: 1)
                 TxGridLayout(columns: columns >= 6 ? 4 : 2, spacing: 12) {
-                    TxField(label: "Client / Project (Freelancer)", size: 10, color: Zen.ink3) {
-                        TextField("", text: $client, prompt: txPrompt("Optional client name"))
+                    TxField(label: L10n.t("tx.clientProjectLabel"), size: 10, color: Zen.ink3) {
+                        TextField("", text: $client, prompt: txPrompt(L10n.t("tx.clientPlaceholder")))
                             .txInput(height: 28, radius: 4, padding: 8)
                             .onSubmit(submit)
                     }
-                    TxField(label: "Invoice / Receipt Ref", size: 10, color: Zen.ink3) {
+                    TxField(label: L10n.t("tx.invoiceRefLabel"), size: 10, color: Zen.ink3) {
                         TextField("", text: $invoiceRef, prompt: txPrompt("e.g. INV-2026-04"))
                             .txInput(height: 28, radius: 4, padding: 8)
                             .onSubmit(submit)
                     }
-                    TxField(label: "VAT Rate %", size: 10, color: Zen.ink3) {
+                    TxField(label: L10n.t("tx.vatRateLabel"), size: 10, color: Zen.ink3) {
                         TextField("", text: $taxRate)
                             .monospacedDigit()
                             .txInput(height: 28, radius: 4, padding: 8)
                             .onSubmit(submit)
                     }
-                    TxField(label: "Tax Deductible %", size: 10, color: Zen.ink3) {
+                    TxField(label: L10n.t("tx.taxDeductibleLabel"), size: 10, color: Zen.ink3) {
                         TxSelect(options: deductibleOptions, selection: $deductiblePct, height: 28, radius: 4)
                     }
                 }
@@ -242,10 +242,10 @@ struct TransactionsView: View {
     }
 
     private var deductibleOptions: [(String, String)] {
-        var options = [("100", "100% Deductible"), ("50", "50% (Client Meals)"), ("0", "0% Non-Deductible")]
+        var options = [("100", L10n.t("tx.ded100")), ("50", L10n.t("tx.ded50")), ("0", L10n.t("tx.ded0"))]
         // Categories can carry other percentages (e.g. 80); show them instead of a wrong label.
         if !options.contains(where: { $0.0 == deductiblePct }), !deductiblePct.isEmpty {
-            options.insert((deductiblePct, "\(deductiblePct)% Deductible"), at: 0)
+            options.insert((deductiblePct, "\(deductiblePct)%"), at: 0)
         }
         return options
     }
@@ -261,9 +261,11 @@ struct TransactionsView: View {
                     .foregroundStyle(Zen.ink3)
                     .padding(.leading, 8)
                     .padding(.trailing, 4)
-                ForEach(TransactionTypeFilter.allCases, id: \.self) { t in
-                    TxSegment(label: t.rawValue.capitalized, active: typeFilter == t,
-                              activeBackground: Zen.raised, shadow: false) { typeFilter = t }
+                ForEach(TransactionTypeFilter.allCases, id: \.self) { tfFilter in
+                    let label = tfFilter == .all ? L10n.t("tx.filterAll")
+                        : tfFilter == .income ? L10n.t("tx.filterIncome") : L10n.t("tx.filterExpense")
+                    TxSegment(label: label, active: typeFilter == tfFilter,
+                              activeBackground: Zen.raised, shadow: false) { typeFilter = tfFilter }
                 }
             }
             .padding(2)
@@ -272,16 +274,16 @@ struct TransactionsView: View {
             .fixedSize()
 
             if !availableAccounts.isEmpty {
-                TxSelect(options: [("all", "All Accounts")] + availableAccounts.map { ($0.id, "Account: \($0.name)") },
+                TxSelect(options: [("all", L10n.t("tx.allAccounts"))] + availableAccounts.map { ($0.id, L10n.tf("tx.accountPrefix", ["name": L10n.accountName($0)])) },
                          selection: $accountFilter, background: Zen.surface, fullWidth: false) { value in
                     if value == "all" { nav.preselectedAccountId = nil }
                 }
             }
         }
         let totals = HStack(spacing: 16) {
-            (Text("Inflow: ").foregroundStyle(Zen.ink2)
+            (Text("\(L10n.t("tx.inflow")) ").foregroundStyle(Zen.ink2)
              + Text(KobanFormat.currency(income, code: currency)).fontWeight(.bold).foregroundStyle(Zen.positive))
-            (Text("Outflow: ").foregroundStyle(Zen.ink2)
+            (Text("\(L10n.t("tx.outflow")) ").foregroundStyle(Zen.ink2)
              + Text(KobanFormat.currency(expense, code: currency)).fontWeight(.bold).foregroundStyle(Zen.ink))
         }
         .font(.zen(12))
@@ -304,7 +306,7 @@ struct TransactionsView: View {
     private var searchField: some View {
         HStack(spacing: 6) {
             ZIcon("magnifyingglass", size: 14).foregroundStyle(Zen.ink3)
-            TextField("", text: $searchQuery, prompt: txPrompt("Filter by description, category, account, client…"))
+            TextField("", text: $searchQuery, prompt: txPrompt(L10n.t("tx.searchPlaceholder")))
                 .textFieldStyle(.plain)
                 .font(.zen(12))
                 .foregroundStyle(Zen.ink)
@@ -354,7 +356,7 @@ struct TransactionsView: View {
         }
         categoryId = id
         if let cat = store.state.categories.first(where: { $0.id == id }) {
-            description = cat.name
+            description = L10n.categoryName(cat)
             taxRate = JSNumber.string(cat.taxRate ?? 0)
             deductiblePct = JSNumber.string(cat.deductiblePct ?? 100)
         }
@@ -378,7 +380,7 @@ struct TransactionsView: View {
 
     private func handleCategoryChange(_ newId: String) {
         guard let cat = store.state.categories.first(where: { $0.id == newId }) else { return }
-        if description.isEmpty { description = cat.name }
+        if description.isEmpty { description = L10n.categoryName(cat) }
         if let rate = cat.taxRate { taxRate = JSNumber.string(rate) }
         if let ded = cat.deductiblePct { deductiblePct = JSNumber.string(ded) }
     }
@@ -440,7 +442,7 @@ private struct TransactionsTable: View {
                 headerRow
                 Rectangle().fill(Zen.line).frame(height: 1)
                 if transactions.isEmpty {
-                    Text("No transactions match your current filter. Add an entry above, import a CSV/Excel file, or edit values directly in the Monthly Budget sheet.")
+                    Text(L10n.t("tx.emptyFilter"))
                         .font(.zen(12))
                         .foregroundStyle(Zen.ink3)
                         .multilineTextAlignment(.center)
@@ -478,15 +480,15 @@ private struct TransactionsTable: View {
 
     private var headerRow: some View {
         HStack(spacing: 0) {
-            head("Date").frame(width: TxCol.date, alignment: .leading)
-            head("Category & Group").frame(maxWidth: .infinity, alignment: .leading)
-            head("Account").frame(width: TxCol.account, alignment: .leading)
-            head("Description").frame(maxWidth: .infinity, alignment: .leading)
+            head(L10n.t("finance.date")).frame(width: TxCol.date, alignment: .leading)
+            head(L10n.t("tx.colCategoryGroup")).frame(maxWidth: .infinity, alignment: .leading)
+            head(L10n.t("finance.account")).frame(width: TxCol.account, alignment: .leading)
+            head(L10n.t("finance.description")).frame(maxWidth: .infinity, alignment: .leading)
             if showFreelancerFields {
-                head("Client / Ref").frame(width: TxCol.client, alignment: .leading)
-                head("Tax / Ded.").frame(width: TxCol.tax, alignment: .trailing)
+                head(L10n.t("tx.colClientRef")).frame(width: TxCol.client, alignment: .leading)
+                head(L10n.t("tx.colTaxDed")).frame(width: TxCol.tax, alignment: .trailing)
             }
-            head("Amount").frame(width: TxCol.amount, alignment: .trailing)
+            head(L10n.t("finance.amount")).frame(width: TxCol.amount, alignment: .trailing)
             Color.clear.frame(width: TxCol.actions, height: 1)
         }
         .padding(.vertical, 10)
@@ -524,9 +526,9 @@ private struct TransactionRow: View {
             HStack(spacing: 8) {
                 Circle().fill(group.map { Color(hexString: $0.color) } ?? Zen.ink3).frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(category?.name ?? "Uncategorized")
+                    Text(category.map { L10n.categoryName($0) } ?? L10n.t("tx.uncategorized"))
                         .font(.zen(12, .medium)).foregroundStyle(Zen.ink).lineLimit(1)
-                    Text((group?.name ?? tx.mode.rawValue).uppercased())
+                    Text((group.map { L10n.groupName($0) } ?? L10n.t(tx.mode == .home ? "workspace.home" : "workspace.freelancer")).uppercased())
                         .font(.zen(10)).tracking(0.5).foregroundStyle(Zen.ink3).lineLimit(1)
                 }
             }
@@ -558,10 +560,10 @@ private struct TransactionRow: View {
                 .frame(width: TxCol.client, alignment: .leading)
 
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text(tx.taxRate.map { $0 != 0 ? "\(JSNumber.string($0))% VAT" : "0% VAT" } ?? "0% VAT")
+                    Text(tx.taxRate.map { $0 != 0 ? "\(JSNumber.string($0))% \(L10n.t("worksheet.vatShort"))" : "0% \(L10n.t("worksheet.vatShort"))" } ?? "0% \(L10n.t("worksheet.vatShort"))")
                         .foregroundStyle(Zen.ink2)
                     if tx.type == .expense && tx.mode == .freelancer {
-                        Text("\(JSNumber.string(tx.deductiblePct ?? 100))% Ded.").foregroundStyle(Zen.indigo)
+                        Text("\(JSNumber.string(tx.deductiblePct ?? 100))% \(L10n.t("worksheet.dedShort"))").foregroundStyle(Zen.indigo)
                     }
                 }
                 .font(.zen(11))
@@ -583,7 +585,7 @@ private struct TransactionRow: View {
             .frame(width: TxCol.amount, alignment: .trailing)
 
             ZenMiniButton(icon: "trash", size: 14, tint: Zen.ink3, hoverTint: Zen.accent,
-                          help: "Delete transaction", action: onDelete)
+                          help: L10n.t("tx.deleteTip"), action: onDelete)
                 .opacity(hovering ? 1 : 0)
                 .frame(width: TxCol.actions)
         }
@@ -597,7 +599,7 @@ private struct TransactionRow: View {
         if let account {
             HStack(spacing: 6) {
                 Circle().fill(Color(hexString: account.color)).frame(width: 6, height: 6)
-                Text(account.name).lineLimit(1)
+                Text(L10n.accountName(account)).lineLimit(1)
             }
             .font(.zen(11))
             .foregroundStyle(Zen.ink2)
@@ -608,7 +610,7 @@ private struct TransactionRow: View {
         } else {
             HStack(spacing: 4) {
                 ZIcon("building.columns", size: 12)
-                Text(tx.paymentMethod.flatMap { $0.isEmpty ? nil : $0 } ?? "General").lineLimit(1)
+                Text(tx.paymentMethod.flatMap { $0.isEmpty ? nil : $0 } ?? L10n.t("tx.general")).lineLimit(1)
             }
             .font(.zen(11))
             .foregroundStyle(Zen.ink3)

@@ -64,8 +64,8 @@ private struct NavPanel: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    ZenEyebrow(workspace == .home ? "Home Budget Ledger"
-                               : workspace == .freelancer ? "Freelancer Business" : "Combined Ledger")
+                    ZenEyebrow(workspace == .home ? L10n.t("sidebar.homeLedger")
+                               : workspace == .freelancer ? L10n.t("sidebar.freelancerLedger") : L10n.t("sidebar.combinedLedger"))
                         .padding(.horizontal, 10)
                         .padding(.bottom, 6)
 
@@ -85,7 +85,7 @@ private struct NavPanel: View {
                 Button { store.openSetupWizard() } label: {
                     HStack(spacing: 6) {
                         ZIcon("sparkles", size: 12).foregroundStyle(Zen.accent)
-                        Text("Re-run Setup / Change Mode").font(.zen(11))
+                        Text(L10n.t("sidebar.rerunSetup")).font(.zen(11))
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -160,14 +160,14 @@ private struct MonthSnapshotCard: View {
 
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                ZenEyebrow("Monthly Summary")
+                ZenEyebrow(L10n.t("sidebar.monthlySummary"))
                 Spacer()
                 Text(summary.monthKey).font(.zen(11)).zenAmount().foregroundStyle(Zen.ink2)
             }
 
             VStack(spacing: 4) {
-                row("Total Income", KobanFormat.currency(summary.incomeActual, code: currency), Zen.positive, .medium)
-                row("Total Expenses", KobanFormat.currency(summary.totalOutflowActual, code: currency), Zen.ink)
+                row(L10n.t("sidebar.totalIncome"), KobanFormat.currency(summary.incomeActual, code: currency), Zen.positive, .medium)
+                row(L10n.t("sidebar.totalExpenses"), KobanFormat.currency(summary.totalOutflowActual, code: currency), Zen.ink)
                 Rectangle().fill(Zen.line).frame(height: 1).padding(.vertical, 4)
                 HStack {
                     Text(L10n.t("finance.net").uppercased()).foregroundStyle(Zen.ink)
@@ -181,7 +181,7 @@ private struct MonthSnapshotCard: View {
 
             if workspace != .home {
                 HStack {
-                    Text("Deductible Exp.").foregroundStyle(Zen.ink3)
+                    Text(L10n.t("sidebar.deductibleExp")).foregroundStyle(Zen.ink3)
                     Spacer()
                     Text(KobanFormat.currency(summary.deductibleExpensesActual, code: currency))
                         .zenAmount().foregroundStyle(Zen.indigo)
@@ -202,7 +202,7 @@ private struct MonthSnapshotCard: View {
                     }
                     .font(.zen(11, .medium))
                     HStack {
-                        Text("Liquid / Retirement")
+                        Text(L10n.t("sidebar.liquidRetirement"))
                         Spacer()
                         Text("\(KobanFormat.currency(netWorth.liquidAssets, code: currency)) / \(KobanFormat.currency(netWorth.retirementAssets, code: currency))")
                             .zenAmount()
@@ -215,7 +215,7 @@ private struct MonthSnapshotCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Open Accounts & Net Worth Tracker")
+            .help(L10n.t("sidebar.netWorthTip"))
         }
         .padding(12)
         .background(Zen.app, in: RoundedRectangle(cornerRadius: 8))
@@ -245,23 +245,23 @@ private struct BackupStatusCard: View {
             HStack(spacing: 6) {
                 ZIcon(active && !problem ? "checkmark.circle" : "exclamationmark.circle", size: 14)
                     .foregroundStyle(problem ? Zen.accent : (active ? Zen.positive : Zen.ink3))
-                Text(store.lastSaveError != nil ? "Save Failed"
-                     : store.lastBackupError != nil ? "Auto-Backup Failed"
-                     : (active ? "Auto-Backup Active" : "Local SQLite Saved"))
+                Text(store.lastSaveError != nil ? L10n.t("sidebar.saveFailed")
+                     : store.lastBackupError != nil ? L10n.t("sidebar.autoBackupFailed")
+                     : (active ? L10n.t("sidebar.autoBackupActive") : L10n.t("sidebar.localSqliteSaved")))
                     .font(.zen(11, .medium))
                     .foregroundStyle(problem ? Zen.accent : Zen.ink)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if !dir.isEmpty {
-                    ZenMiniButton(icon: "arrow.up.right.square", size: 12, help: "Reveal Backup Folder in Finder") {
+                    ZenMiniButton(icon: "arrow.up.right.square", size: 12, help: L10n.t("sidebar.revealBackupMac")) {
                         store.revealBackupFolder()
                     }
                 }
             }
             Button { store.selectedTab = .backups } label: {
                 Text(store.lastSaveError ?? store.lastBackupError
-                     ?? (s.backupDirIsForeign ? "Backup folder is from another device — choose one for this Mac →"
-                         : dir.isEmpty ? "Choose auto-backup path →" : dir))
+                     ?? (s.backupDirIsForeign ? L10n.t("sidebar.foreignBackupMac")
+                         : dir.isEmpty ? L10n.t("sidebar.chooseBackupPath") : dir))
                     .font(.zen(11))
                     .foregroundStyle(Zen.ink3)
                     .lineLimit(1)
@@ -270,7 +270,7 @@ private struct BackupStatusCard: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(dir.isEmpty ? "Click to choose an automatic backup folder" : dir)
+            .help(dir.isEmpty ? L10n.t("sidebar.chooseBackupPathTip") : dir)
         }
         .padding(10)
         .background(Zen.raised.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
@@ -309,13 +309,13 @@ private struct GroupRow: View {
             VStack(spacing: 4) {
                 HStack(spacing: 8) {
                     Circle().fill(Color(hexString: gs.group.color)).frame(width: 8, height: 8)
-                    Text(gs.group.name).font(.zen(12, .medium)).foregroundStyle(Zen.ink).lineLimit(1)
+                    Text(L10n.groupName(gs.group)).font(.zen(12, .medium)).foregroundStyle(Zen.ink).lineLimit(1)
                     Spacer(minLength: 4)
                     Text(KobanFormat.currency(gs.totalActual, code: currency))
                         .font(.zen(11)).zenAmount().foregroundStyle(Zen.ink2)
                 }
                 HStack {
-                    Text("Budget: \(KobanFormat.currency(gs.totalBudget, code: currency))")
+                    Text("\(L10n.t("finance.budget")): \(KobanFormat.currency(gs.totalBudget, code: currency))")
                     Spacer()
                     Text("\(gs.totalDifference >= 0 ? "+" : "")\(KobanFormat.currency(gs.totalDifference, code: currency))")
                         .foregroundStyle(gs.totalDifference >= 0 ? Zen.positive : Zen.accent)

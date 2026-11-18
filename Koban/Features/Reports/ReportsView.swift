@@ -23,10 +23,10 @@ struct ReportsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Financial Reports, Breakdowns & Charts")
+                        Text(L10n.t("reports.title"))
                             .font(.zen(20))
                             .foregroundStyle(Zen.ink)
-                        Text("Visual analysis of monthly budgets vs. actuals, category allocations, 12-month cashflow, and tax reserves (\(summary.monthKey)).")
+                        Text(L10n.tf("reports.subtitle", ["month": summary.monthKey]))
                             .font(.zen(12))
                             .foregroundStyle(Zen.ink2)
                     }
@@ -86,28 +86,28 @@ struct ReportsView: View {
 
     private func kpiGrid(_ s: MonthSummaryMetrics, currency: String, columns: Int) -> some View {
         let cards: [AnyView] = [
-            AnyView(kpiCard("Monthly Income", icon: "chart.line.uptrend.xyaxis", iconColor: Zen.positive,
+            AnyView(kpiCard(L10n.t("reports.kpiIncome"), icon: "chart.line.uptrend.xyaxis", iconColor: Zen.positive,
                             value: KobanFormat.currency(s.incomeActual, code: currency), valueColor: Zen.positive) {
-                Text("Planned Budget: \(KobanFormat.currency(s.incomeBudget, code: currency))")
+                Text(L10n.tf("reports.plannedBudget", ["amount": KobanFormat.currency(s.incomeBudget, code: currency)]))
             }),
-            AnyView(kpiCard("Total Outflow", icon: "chart.line.downtrend.xyaxis", iconColor: Zen.accent,
+            AnyView(kpiCard(L10n.t("reports.kpiOutflow"), icon: "chart.line.downtrend.xyaxis", iconColor: Zen.accent,
                             value: KobanFormat.currency(s.totalOutflowActual, code: currency), valueColor: Zen.ink) {
                 let diff = s.totalOutflowDifference
-                Text("Budget: \(KobanFormat.currency(s.totalOutflowBudget, code: currency)) (")
-                    + Text("\(diff >= 0 ? "+" : "")\(KobanFormat.number(diff)) diff")
+                Text("\(L10n.t("finance.budget")): \(KobanFormat.currency(s.totalOutflowBudget, code: currency)) (")
+                    + Text("\(diff >= 0 ? "+" : "")\(KobanFormat.number(diff)) \(L10n.t("reports.diffSuffix"))")
                         .foregroundColor(diff >= 0 ? Zen.positive : Zen.accent)
                     + Text(")")
             }),
-            AnyView(kpiCard("Net Surplus / Cashflow",
+            AnyView(kpiCard(L10n.t("reports.kpiNetSurplus"),
                             icon: s.netActual >= 0 ? "checkmark.circle" : "exclamationmark.triangle",
                             iconColor: s.netActual >= 0 ? Zen.positive : Zen.accent,
                             value: KobanFormat.currency(s.netActual, code: currency),
                             valueColor: s.netActual >= 0 ? Zen.positive : Zen.accent) {
-                Text("Planned Net: \(KobanFormat.currency(s.netBudget, code: currency))")
+                Text(L10n.tf("reports.plannedNet", ["amount": KobanFormat.currency(s.netBudget, code: currency)]))
             }),
-            AnyView(kpiCard("Savings & Retention Rate", icon: "chart.pie", iconColor: Zen.indigo,
+            AnyView(kpiCard(L10n.t("reports.kpiRetention"), icon: "chart.pie", iconColor: Zen.indigo,
                             value: String(format: "%.1f%%", s.savingsRatePct), valueColor: Zen.indigo) {
-                Text("Of total income retained or saved")
+                Text(L10n.t("reports.retainedDesc"))
             }),
         ]
         return Grid(horizontalSpacing: 16, verticalSpacing: 16) {
@@ -150,10 +150,10 @@ struct ReportsView: View {
     private func donutCard(_ s: MonthSummaryMetrics, data: ReportsData, currency: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Outflow Breakdown by Group")
+                Text(L10n.t("reports.donutTitle"))
                     .font(.zen(14, .medium))
                     .foregroundStyle(Zen.ink)
-                Text("Share of total monthly expenses & savings (\(KobanFormat.currency(s.totalOutflowActual, code: currency)))")
+                Text(L10n.tf("reports.donutDesc", ["amount": KobanFormat.currency(s.totalOutflowActual, code: currency)]))
                     .font(.zen(11))
                     .foregroundStyle(Zen.ink3)
             }
@@ -165,7 +165,7 @@ struct ReportsView: View {
                                  color: Color(hexString: $0.group.color))
             }, hovered: $hoveredSlice) {
                 VStack(spacing: 2) {
-                    Text("TOTAL OUTFLOW")
+                    Text(L10n.t("reports.totalOutflowUpper").uppercased())
                         .font(.zen(10))
                         .tracking(0.5)
                         .foregroundStyle(Zen.ink3)
@@ -174,7 +174,7 @@ struct ReportsView: View {
                         .monospacedDigit()
                         .foregroundStyle(Zen.ink)
                     Text(s.incomeActual > 0
-                         ? "\(Int((s.totalOutflowActual / s.incomeActual * 100).rounded()))% of income" : "")
+                         ? L10n.tf("reports.pctOfIncome", ["pct": Int((s.totalOutflowActual / s.incomeActual * 100).rounded())]) : "")
                         .font(.zen(11))
                         .monospacedDigit()
                         .foregroundStyle(Zen.positive)
@@ -194,7 +194,7 @@ struct ReportsView: View {
                     HStack(spacing: 8) {
                         HStack(spacing: 8) {
                             Circle().fill(Color(hexString: gs.group.color)).frame(width: 10, height: 10)
-                            Text(gs.group.name).foregroundStyle(Zen.ink).lineLimit(1).truncationMode(.tail)
+                            Text(L10n.groupName(gs.group)).foregroundStyle(Zen.ink).lineLimit(1).truncationMode(.tail)
                         }
                         Spacer(minLength: 4)
                         HStack(spacing: 12) {
@@ -229,17 +229,17 @@ struct ReportsView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Budget vs. Actual by Category Group")
+                    Text(L10n.t("reports.barChartTitle"))
                         .font(.zen(14, .medium))
                         .foregroundStyle(Zen.ink)
-                    Text("Planned budget (top bar) compared against actual spending (bottom bar)")
+                    Text(L10n.t("reports.barChartDesc"))
                         .font(.zen(11))
                         .foregroundStyle(Zen.ink3)
                 }
                 Spacer(minLength: 8)
                 HStack(spacing: 12) {
-                    LegendSwatch(color: Zen.ink3.opacity(0.4), label: "Budget")
-                    LegendSwatch(color: Zen.indigo, label: "Actual")
+                    LegendSwatch(color: Zen.ink3.opacity(0.4), label: L10n.t("finance.budget"))
+                    LegendSwatch(color: Zen.indigo, label: L10n.t("finance.actual"))
                 }
             }
 
@@ -250,11 +250,11 @@ struct ReportsView: View {
                     let overBudget = gs.totalActual > gs.totalBudget && gs.totalBudget > 0
                     VStack(spacing: 4) {
                         HStack {
-                            Text(gs.group.name).font(.zen(12, .medium)).foregroundStyle(Zen.ink).lineLimit(1)
+                            Text(L10n.groupName(gs.group)).font(.zen(12, .medium)).foregroundStyle(Zen.ink).lineLimit(1)
                             Spacer(minLength: 8)
                             HStack(spacing: 12) {
-                                Text("Budget: \(KobanFormat.number(gs.totalBudget))").foregroundStyle(Zen.ink3)
-                                Text("Actual: \(KobanFormat.number(gs.totalActual))")
+                                Text("\(L10n.t("finance.budget")): \(KobanFormat.number(gs.totalBudget))").foregroundStyle(Zen.ink3)
+                                Text("\(L10n.t("finance.actual")): \(KobanFormat.number(gs.totalActual))")
                                     .fontWeight(.medium).foregroundStyle(Zen.ink)
                                 Text("\(gs.totalDifference >= 0 ? "+" : "")\(KobanFormat.number(gs.totalDifference))")
                                     .fontWeight(.medium)
@@ -288,18 +288,18 @@ struct ReportsView: View {
             let title = HStack(spacing: 8) {
                 ZIcon("chart.bar", size: 16).foregroundStyle(Zen.indigo)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("12-Month Cashflow & Net Trajectory (\(String(year)))")
+                    Text(L10n.tf("reports.annualTitle", ["year": String(year)]))
                         .font(.zen(14, .medium))
                         .foregroundStyle(Zen.ink)
-                    Text("Monthly Income vs. Total Outflow across all 12 months of the year")
+                    Text(L10n.t("reports.annualDesc"))
                         .font(.zen(11))
                         .foregroundStyle(Zen.ink3)
                 }
             }.fixedSize()
             let legend = HStack(spacing: 16) {
-                LegendSwatch(color: Zen.positive, label: "Income")
-                LegendSwatch(color: Zen.accent.opacity(0.8), label: "Expenses")
-                LegendSwatch(color: Zen.ink3.opacity(0.3), label: "Planned Budget")
+                LegendSwatch(color: Zen.positive, label: L10n.t("finance.income"))
+                LegendSwatch(color: Zen.accent.opacity(0.8), label: L10n.t("finance.expenses"))
+                LegendSwatch(color: Zen.ink3.opacity(0.3), label: L10n.t("reports.plannedBudgetLegend"))
             }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) { title; Spacer(minLength: 8); legend }
@@ -328,10 +328,10 @@ struct ReportsView: View {
     private func topCategoriesCard(_ data: ReportsData, summary: MonthSummaryMetrics, currency: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Top Individual Expense Categories")
+                Text(L10n.t("reports.topCategoriesTitle"))
                     .font(.zen(14, .medium))
                     .foregroundStyle(Zen.ink)
-                Text("Largest cost drivers in \(summary.monthKey) ranked by actual spend")
+                Text(L10n.tf("reports.topCategoriesDesc", ["month": summary.monthKey]))
                     .font(.zen(11))
                     .foregroundStyle(Zen.ink3)
             }
@@ -344,8 +344,8 @@ struct ReportsView: View {
                     HStack(spacing: 8) {
                         HStack(spacing: 8) {
                             Circle().fill(Color(hexString: row.group.color)).frame(width: 8, height: 8)
-                            (Text(row.category.name).font(.zen(12, .medium)).foregroundColor(Zen.ink)
-                             + Text("  " + row.group.name.uppercased()).font(.zen(10)).foregroundColor(Zen.ink3))
+                            (Text(L10n.categoryName(row.category)).font(.zen(12, .medium)).foregroundColor(Zen.ink)
+                             + Text("  " + L10n.groupName(row.group).uppercased()).font(.zen(10)).foregroundColor(Zen.ink3))
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }
@@ -379,10 +379,10 @@ struct ReportsView: View {
             HStack(spacing: 8) {
                 ZIcon("briefcase", size: 16).foregroundStyle(Zen.indigo)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Freelancer Tax, VAT & Client Breakdown")
+                    Text(L10n.t("reports.taxBreakdownTitle"))
                         .font(.zen(14, .medium))
                         .foregroundStyle(Zen.ink)
-                    Text("Tax-deductible business expenses, VAT settlement & client revenue")
+                    Text(L10n.t("reports.taxBreakdownDesc"))
                         .font(.zen(11))
                         .foregroundStyle(Zen.ink3)
                 }
@@ -390,26 +390,26 @@ struct ReportsView: View {
 
             Grid(horizontalSpacing: 12, verticalSpacing: 12) {
                 GridRow {
-                    taxTile("Deductible Expenses", KobanFormat.currency(s.deductibleExpensesActual, code: currency),
+                    taxTile(L10n.t("reports.deductibleExpenses"), KobanFormat.currency(s.deductibleExpensesActual, code: currency),
                             color: Zen.indigo, weight: .semibold, valueColor: Zen.indigo)
-                    taxTile("Net VAT Payable", KobanFormat.currency(s.netVatPayable, code: currency),
+                    taxTile(L10n.t("reports.netVatPayable"), KobanFormat.currency(s.netVatPayable, code: currency),
                             color: Zen.ink, weight: .semibold, valueColor: Zen.ink)
                 }
                 GridRow {
-                    taxTile("VAT Collected (Output)", KobanFormat.currency(s.vatCollected, code: currency),
+                    taxTile(L10n.t("reports.vatCollectedOutput"), KobanFormat.currency(s.vatCollected, code: currency),
                             color: Zen.ink2, weight: .medium, valueColor: Zen.ink2)
-                    taxTile("Input VAT Credit", KobanFormat.currency(s.vatPaidOnExpenses, code: currency),
+                    taxTile(L10n.t("reports.inputVatCredit"), KobanFormat.currency(s.vatPaidOnExpenses, code: currency),
                             color: Zen.positive, weight: .medium, valueColor: Zen.positive)
                 }
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("INCOME SOURCES / CLIENTS (\(s.monthKey))")
+                Text(L10n.tf("reports.incomeSourcesTitle", ["month": s.monthKey]).uppercased())
                     .font(.zen(11, .medium))
                     .tracking(0.55)
                     .foregroundStyle(Zen.ink3)
                 if data.clientRevenue.isEmpty {
-                    Text("No income entries logged for this month yet.")
+                    Text(L10n.t("reports.noIncomeLogged"))
                         .font(.zen(12))
                         .foregroundStyle(Zen.ink3)
                         .padding(.vertical, 8)
@@ -566,7 +566,7 @@ private struct AnnualMonthColumn: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 160, alignment: .bottom)
-            Text(point.monthLabel)
+            Text(L10n.monthName(point.month, short: true))
                 .font(.zen(11, isCurrent ? .semibold : .regular))
                 .monospacedDigit()
                 .foregroundStyle(isCurrent ? Zen.ink : Zen.ink2)
@@ -580,6 +580,6 @@ private struct AnnualMonthColumn: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .help("\(point.monthLabel): Income \(KobanFormat.currency(inc, code: currency)) | Outflow \(KobanFormat.currency(out, code: currency)) | NET \(KobanFormat.currency(inc - out, code: currency))")
+        .help("\(L10n.monthName(point.month, short: true)): \(L10n.t("finance.income")) \(KobanFormat.currency(inc, code: currency)) | \(L10n.t("finance.expenses")) \(KobanFormat.currency(out, code: currency)) | \(L10n.t("finance.net").uppercased()) \(KobanFormat.currency(inc - out, code: currency))")
     }
 }

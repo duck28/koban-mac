@@ -63,13 +63,11 @@ struct WebDavConflictModal: View {
     @State private var working: WebDavSyncCenter.Resolution?
 
     private var title: String {
-        info.firstLink ? "A Koban vault already exists at this WebDAV location" : "Cloud vault changed on another device"
+        L10n.t(info.firstLink ? "webdav.conflictFirstTitle" : "webdav.conflictTitle")
     }
 
     private var message: String {
-        info.firstLink
-            ? "This device has not synced with this WebDAV location before, and both have data. Choose which version to keep — the other one is kept as a backup file."
-            : "Both the WebDAV copy and this device have changes since the last sync. Choose which version to keep — the other one is kept as a backup file."
+        L10n.t(info.firstLink ? "webdav.conflictFirstBody" : "webdav.conflictBody")
     }
 
     var body: some View {
@@ -83,12 +81,12 @@ struct WebDavConflictModal: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    infoRow(icon: "icloud", label: "WebDAV copy last modified",
-                            value: WebDavFormat.httpDate(info.remoteLastModified) ?? "Unknown")
-                    infoRow(icon: "desktopcomputer", label: "This device last saved",
-                            value: info.localSavedAt.map(WebDavFormat.time) ?? "Unknown")
+                    infoRow(icon: "icloud", label: L10n.t("webdav.conflictRemoteModified"),
+                            value: WebDavFormat.httpDate(info.remoteLastModified) ?? L10n.t("webdav.conflictUnknown"))
+                    infoRow(icon: "desktopcomputer", label: L10n.t("webdav.conflictLocalSaved"),
+                            value: info.localSavedAt.map(WebDavFormat.time) ?? L10n.t("webdav.conflictUnknown"))
                     if let target = store.state.settings.webdav.map(WebDav.targetURL) {
-                        infoRow(icon: "server.rack", label: "Location", value: target, mono: true)
+                        infoRow(icon: "server.rack", label: L10n.t("webdav.urlLabel"), value: target, mono: true)
                     }
                 }
                 .padding(14)
@@ -96,33 +94,30 @@ struct WebDavConflictModal: View {
                 .background(Zen.app, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Zen.line, lineWidth: 1))
 
-                (Text("Using the cloud version keeps this device's data as ") + dataIOCode("koban-pre-webdav-sync-<time>.db", color: Zen.ink2)
-                 + Text("; keeping this device's version saves the cloud copy as ") + dataIOCode("koban-webdav-conflict-<time>.db", color: Zen.ink2)
-                 + Text(" next to your local vault."))
+                Text(L10n.t("webdav.confirmPullSafety"))
                     .font(.zen(11)).foregroundStyle(Zen.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(20)
 
             HStack(spacing: 10) {
-                Button(info.firstLink ? "Cancel" : "Decide later") {
+                Button(info.firstLink ? L10n.t("common.cancel") : L10n.t("webdav.conflictDecideLater")) {
                     resolve(info.firstLink ? .cancelFirstLink : .decideLater)
                 }
                 .buttonStyle(.zen(.ghost, height: 34, padding: 14))
                 .keyboardShortcut(.cancelAction)
-                .help(info.firstLink ? "Switch WebDAV back to backup mode" : "Pause sync until you decide")
                 Spacer(minLength: 8)
                 Button { resolve(.keepLocal) } label: {
                     HStack(spacing: 6) {
                         if working == .keepLocal { DataIOSpinner(size: 14) } else { ZIcon("icloud.and.arrow.up", size: 14) }
-                        Text(info.firstLink ? "Upload this device's data" : "Keep this device's version")
+                        Text(L10n.t(info.firstLink ? "webdav.conflictUploadLocal" : "webdav.conflictKeepLocal"))
                     }
                 }
                 .buttonStyle(.zen(.outline, height: 34, padding: 14))
                 Button { resolve(.useCloud) } label: {
                     HStack(spacing: 6) {
                         if working == .useCloud { DataIOSpinner(size: 14) } else { ZIcon("icloud.and.arrow.down", size: 14) }
-                        Text(info.firstLink ? "Use the cloud vault" : "Use cloud version").fontWeight(.medium)
+                        Text(L10n.t(info.firstLink ? "webdav.conflictUseCloudFirst" : "webdav.conflictUseCloud")).fontWeight(.medium)
                     }
                 }
                 .buttonStyle(.zen(.ink, height: 34, padding: 16))
@@ -186,47 +181,46 @@ struct WebDavConnectModal: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            WebDavModalHeader(icon: "icloud.and.arrow.down", iconColor: Zen.indigo, title: "Open Vault from WebDAV",
+            WebDavModalHeader(icon: "icloud.and.arrow.down", iconColor: Zen.indigo, title: L10n.t("webdav.openVaultTitle"),
                               onClose: busy ? nil : { store.dismissModal() })
 
             VStack(alignment: .leading, spacing: 14) {
-                Text("Download an existing Koban vault — for example one kept by your Windows PC or another Mac — and use the WebDAV copy as this device's primary storage. Koban keeps an encrypted local cache for offline use.")
+                Text(L10n.t("webdav.openVaultDesc"))
                     .font(.zen(12)).foregroundStyle(Zen.ink2).lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let feedback { DataIOBanner(kind: feedback.kind, text: feedback.text) }
 
-                field("WebDAV Server URL") {
+                field(L10n.t("webdav.urlLabel")) {
                     DataIOTextField(placeholder: "https://nextcloud.example.com/remote.php/dav/files/myuser/Koban/",
                                     text: $url, icon: "server.rack")
                 }
                 HStack(alignment: .top, spacing: 12) {
-                    field("WebDAV Username") {
-                        DataIOTextField(placeholder: "user@example.com or username", text: $username)
+                    field(L10n.t("webdav.usernameLabel")) {
+                        DataIOTextField(placeholder: L10n.t("webdav.usernamePlaceholder"), text: $username)
                     }
-                    field("Remote Database Filename") {
+                    field(L10n.t("webdav.filenameLabel")) {
                         DataIOTextField(placeholder: WebDav.defaultRemoteFileName, text: $fileName, monospaced: true)
                     }
                     .frame(width: 200)
                 }
-                field("WebDAV Password / App Token") {
+                field(L10n.t("webdav.passwordLabel")) {
                     ZStack(alignment: .trailing) {
-                        DataIOTextField(placeholder: "Account password or generated WebDAV app token",
+                        DataIOTextField(placeholder: L10n.t("webdav.passwordPlaceholder"),
                                         text: $password, icon: "lock", secure: !showPassword, trailingPadding: 36)
                         ZenMiniButton(icon: showPassword ? "eye.slash" : "eye", size: 14,
-                                      help: showPassword ? "Hide password" : "Show password") { showPassword.toggle() }
+                                      help: showPassword ? L10n.t("webdav.passwordHideTip") : L10n.t("webdav.passwordShowTip")) { showPassword.toggle() }
                             .padding(.trailing, 6)
                     }
                 }
-                (Text("An existing local vault on this Mac is kept as ") + dataIOCode("koban-pre-webdav-sync-<time>.db", color: Zen.ink2)
-                 + Text(". A vault protected by a custom passphrase asks for it after the download."))
+                Text(L10n.t("webdav.openVaultNote"))
                     .font(.zen(11)).foregroundStyle(Zen.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(20)
 
             HStack(spacing: 10) {
-                Button("Cancel") { store.dismissModal() }
+                Button(L10n.t("common.cancel")) { store.dismissModal() }
                     .buttonStyle(.zen(.ghost, height: 34, padding: 14))
                     .keyboardShortcut(.cancelAction)
                     .disabled(busy)
@@ -234,7 +228,7 @@ struct WebDavConnectModal: View {
                 Button(action: test) {
                     HStack(spacing: 6) {
                         if isTesting { DataIOSpinner(size: 14) } else { ZIcon("arrow.clockwise", size: 14) }
-                        Text("Test")
+                        Text(L10n.t("webdav.testShortBtn"))
                     }
                 }
                 .buttonStyle(.zen(.outline, height: 34, padding: 14))
@@ -242,7 +236,7 @@ struct WebDavConnectModal: View {
                 Button(action: download) {
                     HStack(spacing: 6) {
                         if isDownloading { DataIOSpinner(size: 14) } else { ZIcon("icloud.and.arrow.down", size: 14) }
-                        Text("Download & Open").fontWeight(.medium)
+                        Text(L10n.t("webdav.downloadOpenBtn")).fontWeight(.medium)
                     }
                 }
                 .buttonStyle(.zen(.ink, height: 34, padding: 16))
@@ -275,7 +269,7 @@ struct WebDavConnectModal: View {
 
     private func test() {
         guard complete else {
-            feedback = (.error, "Please enter WebDAV Server URL, Username, and Password / App Token.")
+            feedback = (.error, L10n.t("webdav.errEnterCreds"))
             return
         }
         isTesting = true
@@ -302,7 +296,7 @@ struct WebDavConnectModal: View {
 
     private func download() {
         guard complete else {
-            feedback = (.error, "Please enter WebDAV Server URL, Username, and Password / App Token.")
+            feedback = (.error, L10n.t("webdav.errEnterCreds"))
             return
         }
         isDownloading = true

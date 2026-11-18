@@ -129,7 +129,7 @@ struct SetupWizardPanel: View {
                 }
                 .buttonStyle(.zen(.raised, height: 32, radius: 8, padding: 12, fontSize: 12))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1).allowsHitTesting(false))
-                .help("Import existing data or restore a backup")
+                .help(L10n.t("topbar.importTip"))
 
                 if canClose {
                     ZenMiniButton(icon: "xmark", size: 16, tint: Zen.ink3, hoverTint: Zen.ink, help: L10n.t("common.close")) {
@@ -216,7 +216,7 @@ struct SetupWizardPanel: View {
                         }
                     }
                     .buttonStyle(.zen(.ghost, height: 36, radius: 8, padding: 16, fontSize: 12))
-                    .help("Download your vault from a WebDAV server (Nextcloud, ownCloud, NAS …) and use it as primary storage")
+                    .help(L10n.t("webdav.openVaultDesc"))
                 }
             }
 

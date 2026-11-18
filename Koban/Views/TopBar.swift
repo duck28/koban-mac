@@ -54,11 +54,11 @@ struct TopBar: View {
                 Button { store.openQuickAdd() } label: {
                     HStack(spacing: 6) {
                         ZIcon("plus", size: 14).foregroundStyle(Zen.accent)
-                        if !compact { Text("Add Entry") }
+                        if !compact { Text(L10n.t("topbar.addEntry")) }
                     }
                 }
                 .buttonStyle(.zen(.raised, radius: 6, padding: 10))
-                .help("Log Income or Expense Transaction (⌘N)")
+                .help(L10n.t("topbar.addEntryTip").replacingOccurrences(of: "Ctrl+", with: "⌘"))
 
                 Button { store.manualBackup() } label: {
                     ZIcon("checkmark.circle")
@@ -66,27 +66,28 @@ struct TopBar: View {
                                          : (!settings.localBackupDir.isEmpty && settings.autoBackup) ? Zen.positive : Zen.ink3)
                 }
                 .buttonStyle(.zenIcon)
-                .help(settings.localBackupDir.isEmpty
-                      ? "Encrypted SQLite DB — Click to backup now (⌘S)"
-                      : "AES-256-GCM Encrypted Auto-Backup active (\(settings.localBackupDir)) — Click to backup now (⌘S)")
+                .help((settings.localBackupDir.isEmpty
+                       ? L10n.t("topbar.backupTipDefault")
+                       : L10n.tf("topbar.backupTipActive", ["dir": settings.localBackupDir]))
+                    .replacingOccurrences(of: "Ctrl+", with: "⌘"))
 
                 Button { store.cycleTheme() } label: { ZIcon(themeIcon(settings.theme)) }
                     .buttonStyle(.zenIcon)
-                    .help("Theme: \(settings.theme.rawValue) (Click to switch)")
+                    .help(L10n.tf("topbar.themeTip", ["theme": L10n.t("settings.themeMode.\(settings.theme.rawValue)")]))
 
                 LanguageSelect()
 
                 Button { store.selectedTab = .settings } label: { ZIcon("slider.horizontal.3") }
                     .buttonStyle(.zenIcon)
-                    .help("Settings & Behavioral Options")
+                    .help(L10n.t("topbar.settingsTip"))
 
                 Button { store.openSetupWizard() } label: { ZIcon("sparkles") }
                     .buttonStyle(.zenIcon)
-                    .help("4-Step Setup Wizard")
+                    .help(L10n.t("topbar.wizardTip"))
 
                 Button { store.lockVault() } label: { ZIcon("lock") }
                     .buttonStyle(.zenIcon)
-                    .help(L10n.t("topbar.lock"))
+                    .help(L10n.t("topbar.lock").replacingOccurrences(of: "Ctrl+", with: "⌘"))
 
                 Button { store.openImport() } label: {
                     HStack(spacing: 6) {
@@ -95,7 +96,7 @@ struct TopBar: View {
                     }
                 }
                 .buttonStyle(.zen(.outline, radius: 6, padding: 10))
-                .help("Import Data (Excel, CSV, Transactions, or Encrypted DB Backup)")
+                .help(L10n.t("topbar.importTip"))
 
                 Button { store.toggleMenu(.export) } label: {
                     HStack(spacing: 6) {
@@ -104,7 +105,7 @@ struct TopBar: View {
                     }
                 }
                 .buttonStyle(.zen(.ink, radius: 6, padding: 12))
-                .help("Export (CSV / Excel / Encrypted Backup)")
+                .help(L10n.t("topbar.exportTip"))
                 .overlay(alignment: .topTrailing) {
                     if store.openMenu == .export {
                         ExportMenu().offset(y: 40)
@@ -182,7 +183,7 @@ struct MonthNavigator: View {
 
             Button { store.toggleMenu(.month) } label: {
                 HStack(spacing: 6) {
-                    Text("\(MonthNames.long[s.activeMonth - 1]) \(String(s.activeYear))")
+                    Text("\(L10n.monthName(s.activeMonth)) \(String(s.activeYear))")
                         .font(.zen(13, .medium))
                         .monospacedDigit()
                         .foregroundStyle(Zen.ink)
@@ -202,12 +203,6 @@ struct MonthNavigator: View {
         }
         .fixedSize()
     }
-}
-
-enum MonthNames {
-    static let long = ["January", "February", "March", "April", "May", "June",
-                       "July", "August", "September", "October", "November", "December"]
-    static let short = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"]
 }
 
 private struct MonthGridMenu: View {
@@ -232,7 +227,7 @@ private struct MonthGridMenu: View {
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 3), spacing: 4) {
                 ForEach(0..<12, id: \.self) { idx in
-                    MonthCell(label: MonthNames.short[idx], active: idx + 1 == s.activeMonth) {
+                    MonthCell(label: L10n.monthName(idx + 1, short: true), active: idx + 1 == s.activeMonth) {
                         store.setMonth(year: s.activeYear, month: idx + 1)
                         store.openMenu = nil
                     }
@@ -272,18 +267,18 @@ private struct ExportMenu: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ZenEyebrow("Excel & CSV Exports").padding(.horizontal, 12).padding(.vertical, 4)
-            item("tablecells", tint: Zen.positive, title: "Export Excel Workbook (.xlsx)…",
-                 detail: "Monthly Worksheet, Breakdown, 12-Month & Transactions", bold: true) { store.exportExcel() }
-            item("arrow.down.doc", tint: Zen.indigo, title: "Export Monthly Budget CSV (.csv)…",
-                 detail: "2-column monthly budget sheet for Excel") { store.exportBudgetCSV() }
-            item("arrow.down.doc", tint: Zen.ink2, title: "Export Transactions & Tax CSV (.csv)…",
-                 detail: "All entries with VAT, deductible % & invoice refs") { store.exportTransactionsCSV() }
+            ZenEyebrow(L10n.t("topbar.exportMenuHeader")).padding(.horizontal, 12).padding(.vertical, 4)
+            item("tablecells", tint: Zen.positive, title: L10n.t("topbar.exportExcelTitle"),
+                 detail: L10n.t("topbar.exportExcelDesc"), bold: true) { store.exportExcel() }
+            item("arrow.down.doc", tint: Zen.indigo, title: L10n.t("topbar.exportBudgetCsvTitle"),
+                 detail: L10n.t("topbar.exportBudgetCsvDesc")) { store.exportBudgetCSV() }
+            item("arrow.down.doc", tint: Zen.ink2, title: L10n.t("topbar.exportTxCsvTitle"),
+                 detail: L10n.t("topbar.exportTxCsvDesc")) { store.exportTransactionsCSV() }
             Rectangle().fill(Zen.line).frame(height: 1).padding(.vertical, 4)
-            item("square.and.arrow.up", tint: Zen.accent, title: "Import Data (.xlsx, .csv, .db)…",
-                 detail: "Import budget sheets, transactions, or backups") { store.openImport() }
-            item("cylinder", tint: Zen.ink2, title: "Backup Encrypted DB Now (⌘S)",
-                 detail: "Save AES-256-GCM encrypted SQLite snapshot") { store.manualBackup() }
+            item("square.and.arrow.up", tint: Zen.accent, title: L10n.t("topbar.importItemTitle"),
+                 detail: L10n.t("topbar.importItemDesc")) { store.openImport() }
+            item("cylinder", tint: Zen.ink2, title: L10n.t("topbar.backupNowTitle").replacingOccurrences(of: "Ctrl+", with: "⌘"),
+                 detail: L10n.t("topbar.backupNowDesc")) { store.manualBackup() }
         }
         .padding(.vertical, 6)
         .frame(width: 288)

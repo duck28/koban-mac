@@ -66,24 +66,138 @@ enum L10n {
     static func t(_ key: String) -> String {
         let lang = state.language
         let raw = L10nTables.tables[lang]?[key] ?? L10nTables.lang_en[key] ?? key
-        return adaptForMac(raw)
+        return adaptForMac(raw, skipHelloSwap: key.hasSuffix("Mac"))
     }
 
     /// Same lookup for an explicit language (tests, previews).
     static func t(_ key: String, language: String) -> String {
-        adaptForMac(L10nTables.tables[language]?[key] ?? L10nTables.lang_en[key] ?? key)
+        let raw = L10nTables.tables[language]?[key] ?? L10nTables.lang_en[key] ?? key
+        return adaptForMac(raw, skipHelloSwap: key.hasSuffix("Mac"))
+    }
+
+    /// Formatted string replacing `{placeholder}` tokens.
+    static func tf(_ key: String, _ args: [String: any CustomStringConvertible]) -> String {
+        var out = t(key)
+        for (k, v) in args {
+            out = out.replacingOccurrences(of: "{\(k)}", with: "\(v)")
+        }
+        return out
+    }
+
+    private static func buildLowerEnIndex(prefix: String) -> [String: String] {
+        var map: [String: String] = [:]
+        for (key, val) in L10nTables.lang_en where key.hasPrefix(prefix) {
+            let lower = val.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !lower.isEmpty, map[lower] == nil {
+                map[lower] = key
+            }
+        }
+        return map
+    }
+
+    private static let groupByLowerEn = buildLowerEnIndex(prefix: "catGroup.")
+    private static let itemByLowerEn = buildLowerEnIndex(prefix: "catItem.")
+    private static let accByLowerEn = buildLowerEnIndex(prefix: "defaultAcc.")
+    private static let goalByLowerEn = buildLowerEnIndex(prefix: "defaultGoal.")
+
+    private static func resolveCatalogLabel(prefix: String, byLowerEn: [String: String], name: String, id: String?) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return name }
+        if let id, !id.isEmpty {
+            let byIdKey = prefix + id
+            if let enDefault = L10nTables.lang_en[byIdKey] {
+                return trimmed.lowercased() == enDefault.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    ? t(byIdKey)
+                    : name
+            }
+        }
+        if let key = byLowerEn[trimmed.lowercased()] {
+            return t(key)
+        }
+        return name
+    }
+
+    static func groupName(_ name: String, id: String? = nil) -> String {
+        resolveCatalogLabel(prefix: "catGroup.", byLowerEn: groupByLowerEn, name: name, id: id)
+    }
+
+    static func groupName(_ g: CategoryGroup) -> String {
+        groupName(g.name, id: g.id)
+    }
+
+    static func groupName(_ g: CatalogGroupDef) -> String {
+        groupName(g.name, id: g.id)
+    }
+
+    static func categoryName(_ name: String, id: String? = nil) -> String {
+        resolveCatalogLabel(prefix: "catItem.", byLowerEn: itemByLowerEn, name: name, id: id)
+    }
+
+    static func categoryName(_ c: CategoryItem) -> String {
+        categoryName(c.name, id: c.id)
+    }
+
+    static func categoryName(_ opt: CatalogCategoryOption) -> String {
+        categoryName(opt.name, id: opt.id)
+    }
+
+    static func accountName(_ name: String, id: String? = nil) -> String {
+        resolveCatalogLabel(prefix: "defaultAcc.", byLowerEn: accByLowerEn, name: name, id: id)
+    }
+
+    static func accountName(_ a: FinancialAccount) -> String {
+        accountName(a.name, id: a.id)
+    }
+
+    static func goalName(_ name: String, id: String? = nil) -> String {
+        resolveCatalogLabel(prefix: "defaultGoal.", byLowerEn: goalByLowerEn, name: name, id: id)
+    }
+
+    static func goalName(_ g: SavingsGoal) -> String {
+        goalName(g.name, id: g.id)
+    }
+
+    static func accountTypeLabel(_ type: AccountType) -> String {
+        let key = "accType.\(type.rawValue)"
+        return L10nTables.lang_en[key] != nil ? t(key) : KobanTemplates.accountType(type).label
+    }
+
+    static func accountTypeShort(_ type: AccountType) -> String {
+        let key = "accTypeShort.\(type.rawValue)"
+        return L10nTables.lang_en[key] != nil ? t(key) : KobanTemplates.accountType(type).shortLabel
+    }
+
+    static func accountClassLabel(_ cls: AccountLiquidityClass) -> String {
+        let key = "accClass.\(cls.rawValue)"
+        return L10nTables.lang_en[key] != nil ? t(key) : KobanTemplates.accountClass(cls).label
+    }
+
+    static func accountClassOpt(_ cls: AccountLiquidityClass) -> String {
+        let key = "accClassOpt.\(cls.rawValue)"
+        return L10nTables.lang_en[key] != nil ? t(key) : accountClassLabel(cls)
+    }
+
+    static func monthName(_ month: Int, short: Bool = false) -> String {
+        let df = DateFormatter()
+        df.locale = intlLocale
+        let syms = (short ? df.shortStandaloneMonthSymbols : df.standaloneMonthSymbols) ?? []
+        let idx = month - 1
+        guard idx >= 0 && idx < syms.count else { return "" }
+        return syms[idx]
     }
 
     /// The Windows strings name Windows Hello and Ctrl shortcuts; on macOS the same features are
     /// Touch ID and ⌘. Brand names are kept untranslated in every locale, so a substring swap works.
-    static func adaptForMac(_ s: String) -> String {
+    static func adaptForMac(_ s: String, skipHelloSwap: Bool = false) -> String {
         guard s.contains("Windows Hello") || s.contains("Ctrl+") else { return s }
         var out = s
-        for (from, to) in [(", Passkeys & Windows Hello", " & Touch ID"), ("Passkeys & Windows Hello", "Touch ID"), ("Passkey & Windows Hello", "Touch ID"),
-                           ("Windows Hello / Passkey", "Touch ID / Passkey"), ("Passkey / Windows Hello", "Touch ID"), ("Windows Hello", "Touch ID"),
-                           ("Ctrl+", "⌘")] {
-            out = out.replacingOccurrences(of: from, with: to)
+        if !skipHelloSwap && !s.contains("Touch ID") {
+            for (from, to) in [(", Passkeys & Windows Hello", " & Touch ID"), ("Passkeys & Windows Hello", "Touch ID"), ("Passkey & Windows Hello", "Touch ID"),
+                               ("Windows Hello / Passkey", "Touch ID / Passkey"), ("Passkey / Windows Hello", "Touch ID"), ("Windows Hello", "Touch ID")] {
+                out = out.replacingOccurrences(of: from, with: to)
+            }
         }
+        out = out.replacingOccurrences(of: "Ctrl+", with: "⌘")
         return out
     }
 

@@ -90,13 +90,15 @@ struct CategoriesView: View {
         .alert(item: $pendingDelete) { target in
             switch target {
             case .category(let id, let name):
-                return Alert(title: Text("Are you sure you want to delete category \"\(name)\"?"),
-                             primaryButton: .destructive(Text("Delete")) { store.deleteCategory(id) },
-                             secondaryButton: .cancel())
+                return Alert(title: Text(L10n.tf("worksheet.deleteCatAlertTitle", ["name": L10n.categoryName(name)])),
+                             message: Text(L10n.t("worksheet.deleteCatAlertMsg")),
+                             primaryButton: .destructive(Text(L10n.t("common.delete"))) { store.deleteCategory(id) },
+                             secondaryButton: .cancel(Text(L10n.t("common.cancel"))))
             case .group(let id, let name):
-                return Alert(title: Text("Are you sure you want to delete the \"\(name)\" group and all categories inside it?"),
-                             primaryButton: .destructive(Text("Delete")) { store.deleteGroup(id) },
-                             secondaryButton: .cancel())
+                return Alert(title: Text(L10n.tf("worksheet.deleteGrpAlertTitle", ["name": L10n.groupName(name)])),
+                             message: Text(L10n.t("worksheet.deleteGrpAlertMsg")),
+                             primaryButton: .destructive(Text(L10n.t("common.delete"))) { store.deleteGroup(id) },
+                             secondaryButton: .cancel(Text(L10n.t("common.cancel"))))
             }
         }
     }
@@ -118,10 +120,10 @@ struct CategoriesView: View {
         let homeCount = state.categories.filter { $0.mode == .home }.count
         let freelancerCount = state.categories.filter { $0.mode == .freelancer }.count
         let title = VStack(alignment: .leading, spacing: 2) {
-            Text("Categories & Structure")
+            Text(L10n.t("categories.title"))
                 .font(.zen(20))
                 .foregroundStyle(Zen.ink)
-            Text("Add, rename, reorder, or toggle categories across your Home and Freelancer workspaces.")
+            Text(L10n.t("categories.subtitle"))
                 .font(.zen(12))
                 .foregroundStyle(Zen.ink2)
         }
@@ -129,7 +131,7 @@ struct CategoriesView: View {
             Button { store.openSetupWizard() } label: {
                 HStack(spacing: 6) {
                     ZIcon("sparkles", size: 14).foregroundStyle(Zen.accent)
-                    Text("Quick Category Picker")
+                    Text(L10n.t("categories.quickPickerBtn"))
                 }
             }
             .buttonStyle(.zenOutline)
@@ -137,14 +139,14 @@ struct CategoriesView: View {
             Button { store.openImport() } label: {
                 HStack(spacing: 6) {
                     ZIcon("square.and.arrow.up", size: 14).foregroundStyle(Zen.indigo)
-                    Text("Import from Excel / CSV…")
+                    Text(L10n.t("categories.importBtn"))
                 }
             }
             .buttonStyle(.zenOutline)
 
             HStack(spacing: 4) {
-                modeButton("Home (\(homeCount))", .home, current: mode)
-                modeButton("Freelancer (\(freelancerCount))", .freelancer, current: mode)
+                modeButton("\(L10n.t("workspace.home")) (\(homeCount))", .home, current: mode)
+                modeButton("\(L10n.t("workspace.freelancer")) (\(freelancerCount))", .freelancer, current: mode)
             }
             .padding(4)
             .background(Zen.surface, in: RoundedRectangle(cornerRadius: 12))
@@ -180,28 +182,28 @@ struct CategoriesView: View {
     private func addGroupForm(mode: LedgerMode) -> some View {
         FlowLayout(spacing: 12, alignment: .bottom) {
             VStack(alignment: .leading, spacing: 4) {
-                formLabel("New \(mode == .home ? "Home" : "Freelancer") Category Group Name")
+                formLabel(L10n.t(mode == .home ? "categories.newHomeGroupLabel" : "categories.newFreelancerGroupLabel"))
                 TextField("", text: $newGroupName,
-                          prompt: Text("e.g. INVESTMENTS, CHILDCARE, STUDIO GEAR").foregroundStyle(Zen.ink3))
+                          prompt: Text(L10n.t("categories.groupPlaceholder")).foregroundStyle(Zen.ink3))
                     .zenField(height: 32)
                     .onSubmit { createGroup(mode: mode) }
             }
             .frame(width: max(200, contentWidth - 32 - formFixedWidth))
 
             VStack(alignment: .leading, spacing: 4) {
-                formLabel("Kind")
-                ZenSelect(options: [(CategoryKind.expense, "Expense"), (.income, "Income"),
-                                    (.savings, "Savings / Reserve")],
+                formLabel(L10n.t("categories.kindLabel"))
+                ZenSelect(options: [(CategoryKind.expense, L10n.t("worksheet.expenseGroupOpt")), (.income, L10n.t("worksheet.incomeGroupOpt")),
+                                    (.savings, L10n.t("worksheet.savingsGroupOpt"))],
                           selection: $newGroupKind)
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                formLabel("Column")
-                ZenSelect(options: [(0, "Left Column"), (1, "Right Column")], selection: $newGroupCol)
+                formLabel(L10n.t("categories.columnLabel"))
+                ZenSelect(options: [(0, L10n.t("worksheet.leftColumnOpt")), (1, L10n.t("worksheet.rightColumnOpt"))], selection: $newGroupCol)
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                formLabel("Accent")
+                formLabel(L10n.t("categories.accentLabel"))
                 HStack(spacing: 4) {
                     ForEach(Array(ZenGroupPalette.colors.prefix(6)), id: \.self) { c in
                         Button { newGroupColor = c } label: {
@@ -226,7 +228,7 @@ struct CategoriesView: View {
             Button { createGroup(mode: mode) } label: {
                 HStack(spacing: 6) {
                     ZIcon("plus", size: 14)
-                    Text("Add Group").fontWeight(.medium)
+                    Text(L10n.t("categories.addGroupBtn")).fontWeight(.medium)
                 }
             }
             .buttonStyle(.zen(.ink, padding: 16))
@@ -263,8 +265,7 @@ struct CategoriesView: View {
             HStack(spacing: 8) {
                 HStack(spacing: 8) {
                     ColorSwatchPicker(hex: grp.color) { store.updateGroup(grp.id, GroupPatch(color: $0)) }
-                        .help("Change group color")
-                    StudioTextField(value: grp.name, font: .zen(12, .semibold), tracking: 0.6, uppercase: true) {
+                    StudioTextField(value: L10n.groupName(grp), font: .zen(12, .semibold), tracking: 0.6, uppercase: true) {
                         store.updateGroup(grp.id, GroupPatch(name: $0))
                     }
                 }
@@ -276,11 +277,10 @@ struct CategoriesView: View {
                     } label: {
                         HStack(spacing: 4) {
                             ZIcon("arrow.left.arrow.right", size: 10)
-                            Text(grp.column == 0 ? "Left Col" : "Right Col")
+                            Text(L10n.t(grp.column == 0 ? "categories.leftCol" : "categories.rightCol"))
                         }
                     }
                     .buttonStyle(SmallChipStyle())
-                    .help("Switch between Left and Right worksheet column")
 
                     Button {
                         let next = addingCatToGroup == grp.id ? nil : grp.id
@@ -289,9 +289,9 @@ struct CategoriesView: View {
                         ZIcon("plus", size: 14)
                     }
                     .buttonStyle(SmallChipStyle(padding: 4))
-                    .help("Add subcategory")
+                    .help(L10n.t("worksheet.addCategoryTip"))
 
-                    ZenMiniButton(icon: "trash", size: 14, tint: Zen.ink3, hoverTint: Zen.accent, help: "Delete group") {
+                    ZenMiniButton(icon: "trash", size: 14, tint: Zen.ink3, hoverTint: Zen.accent, help: L10n.t("worksheet.deleteGroupTip")) {
                         requestDelete(.group(id: grp.id, name: grp.name))
                     }
                 }
@@ -314,7 +314,7 @@ struct CategoriesView: View {
             // Suggestions
             if !suggestions.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("ADDITIONAL CATEGORIES (CLICK TO ADD)")
+                    Text(L10n.t("categories.additionalHeader").uppercased())
                         .font(.zen(10))
                         .tracking(0.5)
                         .foregroundStyle(Zen.ink3)
@@ -327,7 +327,7 @@ struct CategoriesView: View {
                             } label: {
                                 HStack(spacing: 4) {
                                     ZIcon("plus", size: 12).foregroundStyle(Zen.ink3)
-                                    Text(sug.name)
+                                    Text(L10n.categoryName(sug))
                                 }
                             }
                             .buttonStyle(SuggestionChipStyle())
@@ -382,7 +382,7 @@ private struct CategoryStudioRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            StudioTextField(value: cat.name, font: .zen(12)) {
+            StudioTextField(value: L10n.categoryName(cat), font: .zen(12)) {
                 store.updateCategory(cat.id, CategoryPatch(name: $0))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -390,11 +390,10 @@ private struct CategoryStudioRow: View {
             HStack(spacing: 8) {
                 let recurring = cat.isRecurring ?? false
                 RecurringToggle(isOn: recurring) { store.toggleCategoryRecurring(cat.id) }
-                    .help(recurring ? "Recurring monthly item (click to disable)"
-                                    : "Click to mark as recurring monthly item")
+                    .help(L10n.t(recurring ? "worksheet.recurringDisableTip" : "worksheet.recurringEnableTip"))
 
                 HStack(spacing: 4) {
-                    Text("Budget (\(currency)):").font(.zen(10)).foregroundStyle(Zen.ink3)
+                    Text(L10n.tf("categories.budgetCurrencyLabel", ["currency": currency])).font(.zen(10)).foregroundStyle(Zen.ink3)
                     BoxNumberField(value: cat.defaultBudget, width: 80) {
                         store.updateCategory(cat.id, CategoryPatch(defaultBudget: $0))
                     }
@@ -402,13 +401,13 @@ private struct CategoryStudioRow: View {
 
                 if mode == .freelancer {
                     HStack(spacing: 4) {
-                        Text("VAT%:").font(.zen(10)).foregroundStyle(Zen.ink3)
+                        Text("\(L10n.t("worksheet.vatShort"))%:").font(.zen(10)).foregroundStyle(Zen.ink3)
                         BoxNumberField(value: cat.taxRate ?? 0, width: 48) {
                             store.updateCategory(cat.id, CategoryPatch(taxRate: $0))
                         }
                     }
                     HStack(spacing: 4) {
-                        Text("Ded%:").font(.zen(10)).foregroundStyle(Zen.ink3)
+                        Text("\(L10n.t("worksheet.dedShort"))%:").font(.zen(10)).foregroundStyle(Zen.ink3)
                         BoxNumberField(value: cat.deductiblePct ?? 100, width: 48) {
                             store.updateCategory(cat.id, CategoryPatch(deductiblePct: $0))
                         }
@@ -416,7 +415,7 @@ private struct CategoryStudioRow: View {
                 }
 
                 ZenMiniButton(icon: "trash", size: 14, tint: Zen.ink3, hoverTint: Zen.accent,
-                              help: "Remove category", action: onDelete)
+                              help: L10n.t("common.remove"), action: onDelete)
             }
             .fixedSize()
         }
@@ -461,21 +460,21 @@ private struct AddCategoryForm: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            TextField("", text: $name, prompt: Text("Custom category name…").foregroundStyle(Zen.ink3))
+            TextField("", text: $name, prompt: Text(L10n.t("categories.customCatPlaceholder")).foregroundStyle(Zen.ink3))
                 .boxField(height: 28)
                 .frame(minWidth: 140, maxWidth: .infinity)
                 .focused($nameFocused)
                 .onSubmit(onSubmit)
-            TextField("", text: $budget, prompt: Text("Default Budget").foregroundStyle(Zen.ink3))
+            TextField("", text: $budget, prompt: Text(L10n.t("categories.defaultBudgetPlaceholder")).foregroundStyle(Zen.ink3))
                 .boxField(height: 28, trailing: true)
                 .frame(width: 96)
                 .onSubmit(onSubmit)
             if mode == .freelancer {
-                TextField("", text: $tax, prompt: Text("VAT %").foregroundStyle(Zen.ink3))
+                TextField("", text: $tax, prompt: Text("\(L10n.t("worksheet.vatShort")) %").foregroundStyle(Zen.ink3))
                     .boxField(height: 28, trailing: true)
                     .frame(width: 64)
                     .onSubmit(onSubmit)
-                TextField("", text: $ded, prompt: Text("Ded %").foregroundStyle(Zen.ink3))
+                TextField("", text: $ded, prompt: Text("\(L10n.t("worksheet.dedShort")) %").foregroundStyle(Zen.ink3))
                     .boxField(height: 28, trailing: true)
                     .frame(width: 64)
                     .onSubmit(onSubmit)
@@ -483,7 +482,7 @@ private struct AddCategoryForm: View {
             Button(action: onSubmit) {
                 HStack(spacing: 4) {
                     ZIcon("checkmark", size: 12)
-                    Text("Add")
+                    Text(L10n.t("common.add"))
                 }
             }
             .buttonStyle(.zen(.ink, height: 28, radius: 4, padding: 10))
