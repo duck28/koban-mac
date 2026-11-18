@@ -89,9 +89,9 @@ extension ActiveWorkspace {
 extension ProfileSetupMode {
     var title: String {
         switch self {
-        case .home: return "Home Budget"
-        case .freelancer: return "Freelancer / Business"
-        case .both: return "Both"
+        case .home: return L10n.t("onboarding.home")
+        case .freelancer: return L10n.t("onboarding.freelancer")
+        case .both: return L10n.t("onboarding.both")
         }
     }
 }

@@ -80,7 +80,7 @@ enum L10n {
         guard s.contains("Windows Hello") || s.contains("Ctrl+") else { return s }
         var out = s
         for (from, to) in [(", Passkeys & Windows Hello", " & Touch ID"), ("Passkeys & Windows Hello", "Touch ID"), ("Passkey & Windows Hello", "Touch ID"),
-                           ("Passkey / Windows Hello", "Touch ID"), ("Windows Hello", "Touch ID"),
+                           ("Windows Hello / Passkey", "Touch ID / Passkey"), ("Passkey / Windows Hello", "Touch ID"), ("Windows Hello", "Touch ID"),
                            ("Ctrl+", "⌘")] {
             out = out.replacingOccurrences(of: from, with: to)
         }

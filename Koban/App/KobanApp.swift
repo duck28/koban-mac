@@ -33,6 +33,11 @@ struct KobanCommands: Commands {
     let store: LedgerStore
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button(L10n.t("settings.updates.checkNow") + "…") {
+                Task { await UpdateChecker.shared.checkNow(notifyStore: store) }
+            }
+        }
         CommandGroup(replacing: .newItem) {
             Button("Add Entry") { store.openQuickAdd() }
                 .keyboardShortcut("n", modifiers: .command)

@@ -46,7 +46,8 @@ struct SetupWizardView: View {
                 model = existingModel
             } else if model == nil {
                 model = SetupWizardModel(base: store.setupBaseState, auth: store.loadSetupAuthConfig(),
-                                         isFirstRun: isFirstRun, initialStep: initialStep)
+                                         isFirstRun: isFirstRun, hasCustomPassphrase: store.hasCustomPassphrase,
+                                         initialStep: initialStep)
             }
         }
     }
@@ -60,12 +61,14 @@ struct SetupWizardPanel: View {
     @State private var windowHeight: CGFloat = 880
     @State private var bodyContentHeight: CGFloat = 0
 
-    private static let stepsMeta: [(num: Int, title: String, subtitle: String)] = [
-        (1, "1. Profile & Currency", "Choose Home, Freelancer, or Both"),
-        (2, "2. Budget Categories", "Select & customize categories"),
-        (3, "3. Accounts & Net Worth", "Liquid & retirement (or skip)"),
-        (4, "4. Vault & Preferences", "Backups, encryption & behavior"),
-    ]
+    private var stepsMeta: [(num: Int, title: String, subtitle: String)] {
+        [
+            (1, L10n.t("onboarding.step1"), L10n.t("onboarding.step1.sub")),
+            (2, L10n.t("onboarding.step2"), L10n.t("onboarding.step2.sub")),
+            (3, L10n.t("onboarding.step3"), L10n.t("onboarding.step3.sub")),
+            (4, L10n.t("onboarding.step4"), L10n.t("onboarding.step4.sub")),
+        ]
+    }
 
     /// onClose is only offered when re-running setup over a completed ledger.
     private var canClose: Bool { model.setupCompleted && !model.isFirstRun }
@@ -103,25 +106,25 @@ struct SetupWizardPanel: View {
                 Rectangle().fill(Zen.line).frame(width: 1, height: 20)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
-                        Text("Setup Wizard").font(.zen(16, .medium)).foregroundStyle(Zen.ink).tracking(-0.2)
-                        Text("Step \(model.step) of 4")
+                        Text(L10n.t("onboarding.title")).font(.zen(16, .medium)).foregroundStyle(Zen.ink).tracking(-0.2)
+                        Text(L10n.t("onboarding.stepOf4").replacingOccurrences(of: "{step}", with: "\(model.step)"))
                             .font(.zen(10, .medium)).foregroundStyle(Zen.ink2)
                             .padding(.horizontal, 8).padding(.vertical, 2)
                             .background(Zen.raised, in: Capsule())
                             .overlay(Capsule().strokeBorder(Zen.line, lineWidth: 1))
                     }
-                    Text(Self.stepsMeta[model.step - 1].subtitle).font(.zen(12)).foregroundStyle(Zen.ink2)
+                    Text(stepsMeta[model.step - 1].subtitle).font(.zen(12)).foregroundStyle(Zen.ink2)
                 }
             }
             Spacer(minLength: 8)
             HStack(spacing: 8) {
-                LanguageSelect()
+                LanguageSelect(usesTopBarMenu: false)
                 Button {
                     store.openImportFromSetupWizard(model: model)
                 } label: {
                     HStack(spacing: 6) {
                         ZIcon("square.and.arrow.up", size: 14).foregroundStyle(Zen.indigo)
-                        Text("Import Existing Data…").foregroundStyle(Zen.ink)
+                        Text(L10n.t("onboarding.importExisting")).foregroundStyle(Zen.ink)
                     }
                 }
                 .buttonStyle(.zen(.raised, height: 32, radius: 8, padding: 12, fontSize: 12))
@@ -129,7 +132,7 @@ struct SetupWizardPanel: View {
                 .help("Import existing data or restore a backup")
 
                 if canClose {
-                    ZenMiniButton(icon: "xmark", size: 16, tint: Zen.ink3, hoverTint: Zen.ink, help: "Close") {
+                    ZenMiniButton(icon: "xmark", size: 16, tint: Zen.ink3, hoverTint: Zen.ink, help: L10n.t("common.close")) {
                         store.dismissModal()
                     }
                 }
@@ -145,7 +148,7 @@ struct SetupWizardPanel: View {
 
     private var progressBar: some View {
         HStack(spacing: 0) {
-            ForEach(Self.stepsMeta, id: \.num) { s in
+            ForEach(stepsMeta, id: \.num) { s in
                 StepTab(title: s.title, subtitle: s.subtitle,
                         isActive: model.step == s.num, isCompleted: model.step > s.num) { model.step = s.num }
                 if s.num < 4 { Rectangle().fill(Zen.line).frame(width: 1) }
@@ -186,20 +189,20 @@ struct SetupWizardPanel: View {
                     Button { model.step -= 1 } label: {
                         HStack(spacing: 6) {
                             ZIcon("arrow.left", size: 14)
-                            Text("Back")
+                            Text(L10n.t("common.back"))
                         }
                         .foregroundStyle(Zen.ink)
                     }
                     .buttonStyle(.zen(.outline, height: 36, radius: 8, padding: 16, fontSize: 12))
                 } else if canClose {
-                    Button("Cancel") { store.dismissModal() }
+                    Button(L10n.t("common.cancel")) { store.dismissModal() }
                         .buttonStyle(.zen(.ghost, height: 36, radius: 8, padding: 16, fontSize: 12))
                 } else if model.isFirstRun {
                     // macOS: switch to an existing koban.db (e.g. copied from Windows) instead of setting up.
                     Button { store.openExistingDatabase() } label: {
                         HStack(spacing: 6) {
                             ZIcon("folder", size: 14)
-                            Text("Open Existing koban.db…")
+                            Text(L10n.t("onboarding.openExistingDb"))
                         }
                     }
                     .buttonStyle(.zen(.ghost, height: 36, radius: 8, padding: 16, fontSize: 12))
@@ -209,7 +212,7 @@ struct SetupWizardPanel: View {
                     Button { store.presentWebDavConnect() } label: {
                         HStack(spacing: 6) {
                             ZIcon("icloud.and.arrow.down", size: 14)
-                            Text("Open Vault from WebDAV…")
+                            Text(L10n.t("onboarding.openWebDav"))
                         }
                     }
                     .buttonStyle(.zen(.ghost, height: 36, radius: 8, padding: 16, fontSize: 12))
@@ -227,7 +230,7 @@ struct SetupWizardPanel: View {
                     } label: {
                         HStack(spacing: 6) {
                             ZIcon("forward", size: 14)
-                            Text("Skip This Step for Setup Later")
+                            Text(L10n.t("onboarding.skipStep"))
                         }
                     }
                     .buttonStyle(.zen(.outline, height: 36, radius: 8, padding: 16, fontSize: 12))
@@ -239,8 +242,8 @@ struct SetupWizardPanel: View {
                         model.step += 1
                     } label: {
                         HStack(spacing: 8) {
-                            Text(model.step == 1 ? "Next: Categories"
-                                 : model.step == 2 ? "Next: Accounts & Net Worth" : "Next: Vault & Preferences")
+                            Text(model.step == 1 ? L10n.t("onboarding.nextCategories")
+                                 : model.step == 2 ? L10n.t("onboarding.nextAccounts") : L10n.t("onboarding.nextVault"))
                                 .fontWeight(.medium)
                             ZIcon("arrow.right", size: 14)
                         }
@@ -251,11 +254,12 @@ struct SetupWizardPanel: View {
                     Button { model.finish(store: store) } label: {
                         HStack(spacing: 8) {
                             ZIcon("sparkles", size: 14)
-                            Text(model.setupCompleted ? "Save Setup & Preferences" : "Finish Setup & Launch Koban")
+                            Text(model.setupCompleted ? L10n.t("onboarding.savePreferences") : L10n.t("onboarding.finish"))
                                 .fontWeight(.medium)
                         }
                     }
                     .buttonStyle(.zen(.ink, height: 36, radius: 8, padding: 20, fontSize: 12))
+                    .disabled(!model.isPassphraseValid)
                     .keyboardShortcut(.defaultAction)
                 }
             }

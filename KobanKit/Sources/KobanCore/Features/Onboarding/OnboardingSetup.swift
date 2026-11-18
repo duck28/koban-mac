@@ -55,6 +55,8 @@ enum OnboardingSetup {
             fresh.settings.confirmBeforeMonthCopy = opts.confirmBeforeMonthCopy
             fresh.settings.monthCopyScope = opts.monthCopyScope
             fresh.settings.autoPromptCopyOnEmptyMonth = opts.autoPromptCopyOnEmptyMonth
+            fresh.settings.language = state.settings.language ?? L10n.language
+            fresh.settings.autoCheckUpdates = state.settings.autoCheckUpdates ?? true
             return fresh
         }
 
@@ -110,6 +112,7 @@ enum OnboardingSetup {
         next.settings.confirmBeforeMonthCopy = opts.confirmBeforeMonthCopy
         next.settings.monthCopyScope = opts.monthCopyScope
         next.settings.autoPromptCopyOnEmptyMonth = opts.autoPromptCopyOnEmptyMonth
+        next.settings.language = state.settings.language ?? L10n.language
         return next
     }
 

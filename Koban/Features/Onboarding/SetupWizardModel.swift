@@ -10,6 +10,8 @@ final class SetupWizardModel {
     let isFirstRun: Bool
     /// currentSettings.setupCompleted
     let setupCompleted: Bool
+    /// Whether the active database already uses a custom vault passphrase.
+    let hasCustomPassphrase: Bool
     var step: Int
 
     // Step 1: Profile & Currency
@@ -35,6 +37,7 @@ final class SetupWizardModel {
     var backupDir: String
     var autoBackup: Bool
     var vaultPassphrase = ""
+    var vaultPassphraseConfirm = ""
     var userDisplayName: String
     var requireLoginOnStartup: Bool
     var passkeyStatusMsg: String?
@@ -45,9 +48,10 @@ final class SetupWizardModel {
 
     var auth: AuthConfig
 
-    init(base: LedgerState, auth: AuthConfig, isFirstRun: Bool, initialStep: Int = 1) {
+    init(base: LedgerState, auth: AuthConfig, isFirstRun: Bool, hasCustomPassphrase: Bool, initialStep: Int = 1) {
         let s = base.settings
         self.isFirstRun = isFirstRun
+        self.hasCustomPassphrase = hasCustomPassphrase
         setupCompleted = !isFirstRun && s.setupCompleted
         step = min(max(initialStep, 1), 4)
         setupMode = s.setupMode
@@ -167,6 +171,42 @@ final class SetupWizardModel {
 
     // MARK: Step 4
 
+    var requiresCustomPassphrase: Bool { !hasCustomPassphrase }
+
+    var trimmedPassphrase: String {
+        vaultPassphrase.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var trimmedPassphraseConfirm: String {
+        vaultPassphraseConfirm.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var passphraseError: String? {
+        if requiresCustomPassphrase {
+            if trimmedPassphrase.isEmpty {
+                return L10n.t("onboarding.s4.errRequired")
+            }
+            if trimmedPassphrase.count < 4 {
+                return L10n.t("onboarding.s4.errMinLength")
+            }
+            if trimmedPassphrase != trimmedPassphraseConfirm {
+                return L10n.t("onboarding.s4.errMismatch")
+            }
+            return nil
+        }
+        if !trimmedPassphrase.isEmpty || !trimmedPassphraseConfirm.isEmpty {
+            if trimmedPassphrase.count < 4 {
+                return L10n.t("onboarding.s4.errMinLength")
+            }
+            if trimmedPassphrase != trimmedPassphraseConfirm {
+                return L10n.t("onboarding.s4.errMismatch")
+            }
+        }
+        return nil
+    }
+
+    var isPassphraseValid: Bool { passphraseError == nil }
+
     func handleChooseBackupFolder() {
         let panel = NSOpenPanel()
         panel.title = "Select Automatic Database Backup Folder"
@@ -183,11 +223,12 @@ final class SetupWizardModel {
     /// enrollment path (TouchIDKeychain + AuthCenter). The vault secret stored for Touch ID unlock is the
     /// passphrase typed here, else the vault's current custom passphrase.
     func handleEnrollPasskey(store: LedgerStore) {
+        guard isPassphraseValid else { return }
         isEnrollingPasskey = true
         passkeyStatusMsg = nil
         let trimmedName = userDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanName = trimmedName.isEmpty ? "Koban Owner" : trimmedName
-        let typed = vaultPassphrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        let typed = trimmedPassphrase
         let secret = typed.isEmpty ? store.vault?.passphrase : typed
         Task { @MainActor in
             defer { isEnrollingPasskey = false }
@@ -213,7 +254,8 @@ final class SetupWizardModel {
 
     /// handleFinish.
     func finish(store: LedgerStore) {
-        let pass = vaultPassphrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isPassphraseValid else { return }
+        let pass = trimmedPassphrase
         let nextAuth = OnboardingSetup.finishAuth(auth, requireLoginOnStartup: requireLoginOnStartup,
                                                   userDisplayName: userDisplayName, vaultPassphrase: pass)
         auth = nextAuth

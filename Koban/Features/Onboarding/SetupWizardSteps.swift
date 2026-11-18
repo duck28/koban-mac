@@ -68,14 +68,14 @@ struct SetupStepProfile: View {
 
     private var modeCards: [ModeCard] {
         [
-            ModeCard(id: .home, title: "Home Budget",
-                     subtitle: "Personal & household monthly budget, daily living, subscriptions, obligations, and savings.",
+            ModeCard(id: .home, title: L10n.t("onboarding.home"),
+                     subtitle: L10n.t("onboarding.home.desc"),
                      icon: "house", tint: Zen.accent),
-            ModeCard(id: .freelancer, title: "Freelancer / Business",
-                     subtitle: "Client revenue, tax-deductible business expenses, VAT reconciliation, and tax reserves.",
+            ModeCard(id: .freelancer, title: L10n.t("onboarding.freelancer"),
+                     subtitle: L10n.t("onboarding.freelancer.desc"),
                      icon: "briefcase", tint: Zen.indigo),
-            ModeCard(id: .both, title: "Both (Home + Freelancer)",
-                     subtitle: "Dedicated Home and Freelancer workspaces with instant top-bar switching and combined cashflow.",
+            ModeCard(id: .both, title: L10n.t("onboarding.both"),
+                     subtitle: L10n.t("onboarding.both.desc"),
                      icon: "square.3.layers.3d", tint: Zen.positive),
         ]
     }
@@ -83,8 +83,8 @@ struct SetupStepProfile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Choose Your Ledger Profile").font(.zen(16, .medium)).foregroundStyle(Zen.ink)
-                Text("Select how you intend to use Koban. You can switch workspaces or enable both at any time.")
+                Text(L10n.t("onboarding.s1.heading")).font(.zen(16, .medium)).foregroundStyle(Zen.ink)
+                Text(L10n.t("onboarding.s1.desc"))
                     .font(.zen(12)).foregroundStyle(Zen.ink2)
                 HStack(alignment: .top, spacing: 14) {
                     ForEach(modeCards, id: \.id) { card in modeCard(card) }
@@ -94,10 +94,10 @@ struct SetupStepProfile: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                Text("Currency & Tax Defaults").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                Text(L10n.t("onboarding.s1.currencyTaxTitle")).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
                 HStack(alignment: .top, spacing: 16) {
                     VStack(alignment: .leading, spacing: 0) {
-                        FieldLabel("Primary Currency")
+                        FieldLabel(L10n.t("settings.currency"))
                         OnbSelect(options: [("CHF", "CHF — Swiss Franc"), ("EUR", "EUR (€) — Euro"),
                                             ("USD", "USD ($) — US Dollar"), ("GBP", "GBP (£) — British Pound"),
                                             ("JPY", "JPY (¥) — Japanese Yen")]
@@ -107,12 +107,12 @@ struct SetupStepProfile: View {
                     }
                     .frame(maxWidth: .infinity)
                     VStack(alignment: .leading, spacing: 0) {
-                        FieldLabel("Default Freelancer VAT %")
+                        FieldLabel(L10n.t("onboarding.s1.vatLabel"))
                         OnbNumberField(value: $model.defaultVatRate)
                     }
                     .frame(maxWidth: .infinity)
                     VStack(alignment: .leading, spacing: 0) {
-                        FieldLabel("Tax Reserve Set-Aside %")
+                        FieldLabel(L10n.t("onboarding.s1.taxReserveLabel"))
                         OnbNumberField(value: $model.taxReserveRate)
                     }
                     .frame(maxWidth: .infinity)
@@ -180,20 +180,20 @@ struct SetupStepCategories: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            StepHeading(title: "Select & Customize Your Categories",
-                        subtitle: "Core categories are pre-checked. Uncheck any you don't need, check additional categories, or add custom ones.") {
+            StepHeading(title: L10n.t("onboarding.s2.heading"),
+                        subtitle: L10n.t("onboarding.s2.desc")) {
                 HStack(spacing: 8) {
                     if model.setupMode == .both {
                         HStack(spacing: 0) {
-                            tabButton(.home, "Home (\(model.selectedHomeIds.count))")
-                            tabButton(.freelancer, "Freelancer (\(model.selectedFreelancerIds.count))")
+                            tabButton(.home, "\(L10n.t("workspace.home")) (\(model.selectedHomeIds.count))")
+                            tabButton(.freelancer, "\(L10n.t("workspace.freelancer")) (\(model.selectedFreelancerIds.count))")
                         }
                         .padding(2)
                         .background(Zen.raised, in: RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
                     }
                     if model.setupCompleted {
-                        OnbCheckbox(isOn: $model.applyCategorySelection, label: "Apply category changes")
+                        OnbCheckbox(isOn: $model.applyCategorySelection, label: L10n.t("onboarding.s2.applyChanges"))
                     }
                 }
                 .fixedSize()
@@ -234,32 +234,19 @@ struct SetupStepCategories: View {
         .buttonStyle(.plain)
     }
 
-    private var legendText: Text {
-        let b: (String) -> Text = { Text($0).fontWeight(.semibold) }
-        var t: Text = Text("Fixed items like ") + b("Wages")
-        t = t + Text(", ") + b("Mortgage/Rent")
-        t = t + Text(", ") + b("Health Insurance")
-        t = t + Text(" & ") + b("Subscriptions")
-        t = t + Text(" are set as ") + b("Recurring")
-        t = t + Text(" automatically. Click the ")
-        let icon: Text = Text(Image(systemName: "repeat")).foregroundColor(Zen.indigo)
-        let iconLabel: Text = Text(" recurring icon").foregroundColor(Zen.indigo).fontWeight(.medium)
-        return t + icon + iconLabel + Text(" on any category to toggle it on or off.")
-    }
-
     private var recurringLegend: some View {
         HStack(spacing: 8) {
             HStack(alignment: .center, spacing: 8) {
                 RoundedRectangle(cornerRadius: 6).fill(Zen.indigo).frame(width: 20, height: 20)
                     .overlay(ZIcon("repeat", size: 12, weight: .regular).foregroundStyle(.white))
-                legendText
+                Text(L10n.t("onboarding.s2.recurringLegend"))
                     .font(.zen(12)).foregroundStyle(Zen.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            Button("Reset Recurring Defaults") { model.resetRecurringDefaults() }
+            Button(L10n.t("onboarding.s2.resetRecurring")) { model.resetRecurringDefaults() }
                 .buttonStyle(LinkLikeButtonStyle(color: Zen.indigo))
-                .help("Restore default recurring flags")
+                .help(L10n.t("onboarding.s2.resetRecurring"))
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
         .background(Zen.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
@@ -305,13 +292,13 @@ private struct GroupCard: View {
                     }
                     Spacer(minLength: 4)
                     HStack(spacing: 6) {
-                        TinyTextButton(label: "All") { model.setGroupSelection(group, .all) }
+                        TinyTextButton(label: L10n.t("onboarding.s2.all")) { model.setGroupSelection(group, .all) }
                         Text("·")
                         TinyTextButton(icon: "arrow.counterclockwise", help: "Reset to default selection") {
                             model.setGroupSelection(group, .default)
                         }
                         Text("·")
-                        TinyTextButton(label: "None") { model.setGroupSelection(group, .none) }
+                        TinyTextButton(label: L10n.t("onboarding.s2.none")) { model.setGroupSelection(group, .none) }
                     }
                     .font(.zen(10))
                     .foregroundStyle(Zen.ink3)
@@ -341,11 +328,11 @@ private struct GroupCard: View {
             HStack(spacing: 6) {
                 OnbTextField(text: Binding(get: { model.customInputByGroup[group.id] ?? "" },
                                            set: { model.customInputByGroup[group.id] = $0 }),
-                             placeholder: "+ Add custom to \(group.name.lowercased())…",
+                             placeholder: L10n.t("onboarding.s2.addCustomPlaceholder"),
                              height: 24, fontSize: 11, radius: 4, horizontalPadding: 8,
                              onSubmit: { model.handleAddCustomCategory(group.id) })
                 if !(model.customInputByGroup[group.id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty {
-                    Button("Add") { model.handleAddCustomCategory(group.id) }
+                    Button(L10n.t("common.add")) { model.handleAddCustomCategory(group.id) }
                         .buttonStyle(.zen(.ink, height: 24, radius: 4, padding: 8, fontSize: 10))
                 }
             }
@@ -498,29 +485,46 @@ private struct RemoveToggle: View {
 struct SetupStepAccounts: View {
     @Bindable var model: SetupWizardModel
 
-    private static let liquidTypes: [(AccountType, String)] = [
-        (.checking, "Checking"), (.savings, "Savings"), (.businessBank, "Business Bank"),
-        (.taxReserve, "Tax Reserve"), (.cash, "Cash / Wallet"), (.custom, "Custom"),
-    ]
-    private static let wealthTypes: [(AccountType, String)] = [
-        (.retirement, "Retirement / Pension"), (.brokerage, "Brokerage / ETFs"), (.crypto, "Crypto"),
-        (.realEstate, "Real Estate"), (.creditCard, "Credit Card (Debt)"), (.loan, "Loan / Mortgage (Debt)"),
-        (.custom, "Custom Type…"),
-    ]
-    private static let classOptions: [(AccountLiquidityClass, String)] = [
-        (.retirement, "Retirement"), (.investment, "Investment"), (.fixedAsset, "Fixed Asset"),
-        (.liquid, "Liquid"), (.liability, "Liability"),
-    ]
+    private var liquidTypes: [(AccountType, String)] {
+        [
+            (.checking, L10n.t("onboarding.s3.type.checking")),
+            (.savings, L10n.t("onboarding.s3.type.savings")),
+            (.businessBank, L10n.t("onboarding.s3.type.businessBank")),
+            (.taxReserve, L10n.t("onboarding.s3.type.taxReserve")),
+            (.cash, L10n.t("onboarding.s3.type.cash")),
+            (.custom, L10n.t("onboarding.s3.type.custom")),
+        ]
+    }
+    private var wealthTypes: [(AccountType, String)] {
+        [
+            (.retirement, L10n.t("onboarding.s3.type.retirement")),
+            (.brokerage, L10n.t("onboarding.s3.type.brokerage")),
+            (.crypto, L10n.t("onboarding.s3.type.crypto")),
+            (.realEstate, L10n.t("onboarding.s3.type.realEstate")),
+            (.creditCard, L10n.t("onboarding.s3.type.creditCard")),
+            (.loan, L10n.t("onboarding.s3.type.loan")),
+            (.custom, L10n.t("onboarding.s3.type.custom")),
+        ]
+    }
+    private var classOptions: [(AccountLiquidityClass, String)] {
+        [
+            (.retirement, L10n.t("onboarding.s3.class.retirement")),
+            (.investment, L10n.t("onboarding.s3.class.investment")),
+            (.fixedAsset, L10n.t("onboarding.s3.class.fixedAsset")),
+            (.liquid, L10n.t("onboarding.s3.class.liquid")),
+            (.liability, L10n.t("onboarding.s3.class.liability")),
+        ]
+    }
 
     var body: some View {
         let totals = model.totals
         let currency = model.currency
         VStack(alignment: .leading, spacing: 16) {
-            StepHeading(title: "Liquid Assets, Retirement & Custom Accounts",
-                        subtitle: "Configure your bank accounts, retirement funds (Pillar 2 / 3a / IRA), or custom accounts — or skip this step for setup later.",
-                        badge: "Optional") {
+            StepHeading(title: L10n.t("onboarding.s3.heading"),
+                        subtitle: L10n.t("onboarding.s3.desc"),
+                        badge: L10n.t("onboarding.s3.optionalBadge")) {
                 HStack(spacing: 6) {
-                    Text("Est. Net Worth:").foregroundStyle(Zen.ink3)
+                    Text(L10n.t("onboarding.s3.estNetWorth")).foregroundStyle(Zen.ink3)
                     Text(KobanFormat.currency(totals.netWorth, code: currency)).fontWeight(.semibold)
                         .foregroundStyle(totals.netWorth >= 0 ? Zen.positive : Zen.accent)
                 }
@@ -532,17 +536,17 @@ struct SetupStepAccounts: View {
             }
 
             HStack(alignment: .top, spacing: 16) {
-                column(icon: "building.columns", iconTint: Zen.positive, title: "Liquid Assets & Bank Accounts",
+                column(icon: "building.columns", iconTint: Zen.positive, title: L10n.t("onboarding.s3.liquidTitle"),
                        total: totals.liquid, totalColor: Zen.positive,
                        accounts: model.draftAccounts.filter { $0.classification == .liquid }, liquid: true) {
-                    addButton("Add Another Bank / Liquid Account") { model.addDraftAccount(.liquid) }
+                    addButton(L10n.t("onboarding.s3.addLiquid")) { model.addDraftAccount(.liquid) }
                 }
-                column(icon: "shield", iconTint: Color(hexString: "#8a6fb0"), title: "Retirement, Investments & Custom",
+                column(icon: "shield", iconTint: Color(hexString: "#8a6fb0"), title: L10n.t("onboarding.s3.wealthTitle"),
                        total: totals.wealthAndOther, totalColor: Zen.ink,
                        accounts: model.draftAccounts.filter { $0.classification != .liquid }, liquid: false) {
                     HStack(spacing: 8) {
-                        addButton("Add Retirement / ETF") { model.addDraftAccount(.retirement) }
-                        addButton("Add Custom Account") { model.addDraftAccount(.custom) }
+                        addButton(L10n.t("onboarding.s3.addRetirement")) { model.addDraftAccount(.retirement) }
+                        addButton(L10n.t("onboarding.s3.addCustom")) { model.addDraftAccount(.custom) }
                     }
                 }
             }
@@ -582,20 +586,20 @@ struct SetupStepAccounts: View {
 
     private func accountRow(_ acc: FinancialAccount, liquid: Bool) -> some View {
         let id = acc.id
-        let types = liquid ? Self.liquidTypes : Self.wealthTypes
+        let types = liquid ? liquidTypes : wealthTypes
         let typeOptions = types.contains(where: { $0.0 == acc.type })
             ? types : types + [(acc.type, KobanTemplates.accountType(acc.type).label)]
         return VStack(spacing: 6) {
             HStack(spacing: 6) {
                 OnbTextField(text: Binding(get: { model.draftAccounts.first { $0.id == id }?.name ?? "" },
                                            set: { v in model.updateDraftAccount(id) { $0.name = v } }),
-                             placeholder: liquid ? "Account name (e.g. Main Checking)" : "e.g. Pillar 3a, Pension, ETFs",
+                             placeholder: liquid ? L10n.t("onboarding.s3.accountNamePlaceholder") : L10n.t("onboarding.s3.wealthNamePlaceholder"),
                              height: 28, fontSize: 12, background: Zen.app, radius: 4, horizontalPadding: 8)
                 OnbSelect(options: typeOptions,
                           selection: Binding(get: { acc.type }, set: { model.changeDraftType(id, to: $0) }),
                           height: 28, fontSize: 11, textColor: Zen.ink2, background: Zen.app, radius: 4,
                           horizontalPadding: 6)
-                ZenMiniButton(icon: "trash", size: 14, tint: Zen.ink3, hoverTint: Zen.accent, help: "Remove account") {
+                ZenMiniButton(icon: "trash", size: 14, tint: Zen.ink3, hoverTint: Zen.accent, help: L10n.t("common.remove")) {
                     model.removeDraftAccount(id)
                 }
             }
@@ -603,9 +607,9 @@ struct SetupStepAccounts: View {
                 if !liquid && acc.type == .custom {
                     OnbTextField(text: Binding(get: { model.draftAccounts.first { $0.id == id }?.customTypeLabel ?? "" },
                                                set: { v in model.updateDraftAccount(id) { $0.customTypeLabel = v } }),
-                                 placeholder: "Custom type label…",
+                                 placeholder: L10n.t("onboarding.s3.customTypePlaceholder"),
                                  height: 28, fontSize: 11, background: Zen.app, radius: 4, horizontalPadding: 8)
-                    OnbSelect(options: Self.classOptions,
+                    OnbSelect(options: classOptions,
                               selection: Binding(get: { acc.classification },
                                                  set: { v in model.updateDraftAccount(id) { $0.classification = v } }),
                               height: 28, fontSize: 10, textColor: Zen.ink2, background: Zen.app, radius: 4,
@@ -613,7 +617,7 @@ struct SetupStepAccounts: View {
                 } else {
                     OnbTextField(text: Binding(get: { model.draftAccounts.first { $0.id == id }?.institution ?? "" },
                                                set: { v in model.updateDraftAccount(id) { $0.institution = v } }),
-                                 placeholder: liquid ? "Bank / Institution (optional)" : "Provider / Foundation (optional)",
+                                 placeholder: liquid ? L10n.t("onboarding.s3.bankPlaceholder") : L10n.t("onboarding.s3.providerPlaceholder"),
                                  height: 28, fontSize: 11, textColor: Zen.ink2, background: Zen.app, radius: 4,
                                  horizontalPadding: 8)
                 }
@@ -651,19 +655,93 @@ struct SetupStepVault: View {
     var body: some View {
         let passkeyCount = model.auth.passkeys.count
         VStack(alignment: .leading, spacing: 16) {
-            StepHeading(title: "Passkey / Touch ID Login, Encrypted Vault & Preferences",
-                        subtitle: "Configure Passkey / Touch ID login protection, automatic encrypted SQLite backups, and month-to-month workflow preferences.")
+            StepHeading(title: L10n.t("onboarding.s4.heading"),
+                        subtitle: L10n.t("onboarding.s4.desc"))
 
-            // Login & Passkey / Touch ID Protection
+            // 1. Encrypted Vault, Custom Passphrase & Backup Path
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        ZIcon("checkmark.shield", size: 16).foregroundStyle(Zen.positive)
+                        Text(L10n.t("onboarding.s4.vaultTitle"))
+                            .font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                        Text(model.requiresCustomPassphrase ? L10n.t("onboarding.s4.requiredBadge") : L10n.t("onboarding.s4.configuredBadge"))
+                            .font(.zen(10, .medium))
+                            .foregroundStyle(model.requiresCustomPassphrase ? Zen.warning : Zen.positive)
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .background((model.requiresCustomPassphrase ? Zen.warning : Zen.positive).opacity(0.14), in: Capsule())
+                            .overlay(Capsule().strokeBorder((model.requiresCustomPassphrase ? Zen.warning : Zen.positive).opacity(0.35), lineWidth: 1))
+                    }
+                    Spacer(minLength: 8)
+                    OnbCheckbox(isOn: $model.autoBackup, label: L10n.t("onboarding.s4.autoBackup"))
+                }
+
+                Text(model.requiresCustomPassphrase
+                     ? L10n.t("onboarding.s4.vaultDescRequired")
+                     : L10n.t("onboarding.s4.vaultDescConfigured"))
+                    .font(.zen(11)).foregroundStyle(Zen.ink2).lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 10) {
+                    passphraseField(
+                        text: $model.vaultPassphrase,
+                        placeholder: model.requiresCustomPassphrase
+                            ? L10n.t("onboarding.s4.passphrasePlaceholderReq")
+                            : L10n.t("onboarding.s4.passphrasePlaceholderOpt")
+                    )
+                    passphraseField(
+                        text: $model.vaultPassphraseConfirm,
+                        placeholder: model.requiresCustomPassphrase
+                            ? L10n.t("onboarding.s4.confirmPlaceholderReq")
+                            : L10n.t("onboarding.s4.confirmPlaceholderOpt")
+                    )
+                }
+
+                if let err = model.passphraseError,
+                   !model.trimmedPassphrase.isEmpty || !model.trimmedPassphraseConfirm.isEmpty || model.requiresCustomPassphrase {
+                    let bothEmpty = model.trimmedPassphrase.isEmpty && model.trimmedPassphraseConfirm.isEmpty
+                    Text(err)
+                        .font(.zen(11))
+                        .foregroundStyle(bothEmpty ? Zen.ink2 : Zen.accent)
+                }
+
+                HStack(alignment: .top, spacing: 10) {
+                    ZIcon("exclamationmark.triangle", size: 15).foregroundStyle(Zen.warning).padding(.top, 1)
+                    (Text(L10n.t("onboarding.s4.docWarningTitle") + " ").fontWeight(.medium).foregroundColor(Zen.ink)
+                     + Text(L10n.t("onboarding.s4.docWarningDesc")).foregroundColor(Zen.ink2))
+                        .font(.zen(11)).lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Zen.warning.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.warning.opacity(0.3), lineWidth: 1))
+
+                HStack(spacing: 8) {
+                    OnbTextField(text: $model.backupDir,
+                                 placeholder: "\(L10n.t("onboarding.s4.backupFolderPlaceholder")): /Users/\(NSUserName())/Backups/Koban")
+                    Button { model.handleChooseBackupFolder() } label: {
+                        HStack(spacing: 6) {
+                            ZIcon("folder", size: 14)
+                            Text(L10n.t("onboarding.s4.browse")).foregroundStyle(Zen.ink)
+                        }
+                    }
+                    .buttonStyle(.zen(.raised, height: 36, radius: 8, padding: 12, fontSize: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1).allowsHitTesting(false))
+                }
+            }
+            .onbBox()
+
+            // 2. Login & Passkey / Touch ID Protection
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     HStack(spacing: 8) {
                         ZIcon("touchid", size: 16).foregroundStyle(Zen.indigo)
-                        Text("Passkey & Touch ID Login Protection").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                        Text(L10n.t("onboarding.s4.loginTitle")).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
                         if passkeyCount > 0 {
                             HStack(spacing: 4) {
                                 ZIcon("checkmark.circle", size: 12, weight: .regular)
-                                Text("\(passkeyCount) Passkey Enrolled")
+                                Text("\(passkeyCount) \(L10n.t("onboarding.s4.passkeyEnrolled"))")
                             }
                             .font(.zen(10, .medium)).foregroundStyle(Zen.positive)
                             .padding(.horizontal, 8).padding(.vertical, 2)
@@ -672,24 +750,29 @@ struct SetupStepVault: View {
                         }
                     }
                     Spacer(minLength: 8)
-                    OnbCheckbox(isOn: $model.requireLoginOnStartup, label: "Require Login on Startup")
+                    OnbCheckbox(isOn: $model.requireLoginOnStartup, label: L10n.t("onboarding.s4.requireLoginStartup"))
                 }
 
                 HStack(alignment: .bottom, spacing: 10) {
                     VStack(alignment: .leading, spacing: 0) {
-                        FieldLabel("Account Owner Name")
-                        OnbTextField(text: $model.userDisplayName, placeholder: "e.g. Roland")
+                        FieldLabel(L10n.t("onboarding.s4.ownerNameLabel"))
+                        OnbTextField(text: $model.userDisplayName, placeholder: "Koban Owner")
                     }
                     .frame(maxWidth: .infinity)
                     Button { model.handleEnrollPasskey(store: store) } label: {
                         HStack(spacing: 8) {
                             ZIcon("touchid", size: 14)
-                            Text(passkeyCount > 0 ? "Add Another Passkey / Touch ID" : "Enroll Passkey / Touch ID")
+                            Text(passkeyCount > 0 ? L10n.t("onboarding.s4.addAnotherPasskeyBtn") : L10n.t("onboarding.s4.enrollBtn"))
                                 .fontWeight(.medium)
                         }
                     }
                     .buttonStyle(.zen(.ink, height: 36, radius: 8, padding: 16, fontSize: 12))
-                    .disabled(model.isEnrollingPasskey)
+                    .disabled(model.isEnrollingPasskey || !model.isPassphraseValid)
+                }
+
+                if !model.isPassphraseValid {
+                    Text(L10n.t("onboarding.s4.passkeyGateHint"))
+                        .font(.zen(11)).foregroundStyle(Zen.ink3)
                 }
 
                 if let msg = model.passkeyStatusMsg {
@@ -698,87 +781,49 @@ struct SetupStepVault: View {
             }
             .onbBox()
 
-            // Encrypted Vault & Backup Path
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    HStack(spacing: 8) {
-                        ZIcon("checkmark.shield", size: 16).foregroundStyle(Zen.positive)
-                        Text("AES-256-GCM Encrypted Database & Automatic Backups")
-                            .font(.zen(12, .medium)).foregroundStyle(Zen.ink)
-                    }
-                    Spacer(minLength: 8)
-                    OnbCheckbox(isOn: $model.autoBackup, label: "Auto-backup on changes")
-                }
-
-                (Text("All records inside ") + Text("koban.db").font(.system(size: 11, design: .monospaced)).foregroundColor(Zen.ink)
-                 + Text(" and your backup snapshots (")
-                 + Text("koban-latest.db").font(.system(size: 11, design: .monospaced)).foregroundColor(Zen.ink)
-                 + Text(") are encrypted at rest with authenticated ")
-                 + Text("AES-256-GCM").fontWeight(.semibold) + Text("."))
-                    .font(.zen(11)).foregroundStyle(Zen.ink2).lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 10) {
-                    HStack(spacing: 8) {
-                        OnbTextField(text: $model.backupDir,
-                                     placeholder: "Backup Folder: e.g. /Users/\(NSUserName())/Backups/Koban")
-                        Button { model.handleChooseBackupFolder() } label: {
-                            HStack(spacing: 6) {
-                                ZIcon("folder", size: 14)
-                                Text("Browse…").foregroundStyle(Zen.ink)
-                            }
-                        }
-                        .buttonStyle(.zen(.raised, height: 36, radius: 8, padding: 12, fontSize: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1).allowsHitTesting(false))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .layoutPriority(2)
-
-                    HStack(spacing: 8) {
-                        ZIcon("lock", size: 14).foregroundStyle(Zen.ink3)
-                        SecureField("", text: $model.vaultPassphrase,
-                                    prompt: Text("Optional custom vault passphrase").foregroundStyle(Zen.ink3))
-                            .textFieldStyle(.plain)
-                            .font(.zen(12))
-                            .foregroundStyle(Zen.ink)
-                    }
-                    .padding(.leading, 10).padding(.trailing, 12)
-                    .frame(height: 36)
-                    .background(Zen.surface, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
-                    .frame(width: 262)
-                }
-            }
-            .onbBox()
-
             // Behavioral Options
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     ZIcon("slider.horizontal.3", size: 16).foregroundStyle(Zen.indigo)
-                    Text("Month-to-Month Copy & Behavioral Preferences").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                    Text(L10n.t("onboarding.s4.behaviorTitle")).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
                 }
 
                 HStack(alignment: .top, spacing: 12) {
                     preferenceCard(isOn: $model.confirmBeforeMonthCopy,
-                                   title: "Ask confirmation before copying monthly values",
-                                   detail: "Always ask if you are sure before copying last month's values into the next month.")
+                                   title: L10n.t("onboarding.s4.confirmCopyTitle"),
+                                   detail: L10n.t("onboarding.s4.confirmCopyDesc"))
                     preferenceCard(isOn: $model.autoPromptCopyOnEmptyMonth,
-                                   title: "Offer carry-over when switching to an empty month",
-                                   detail: "Show a one-click banner when viewing a new month that has no values yet.")
+                                   title: L10n.t("onboarding.s4.autoPromptCopyTitle"),
+                                   detail: L10n.t("onboarding.s4.autoPromptCopyDesc"))
                 }
                 .fixedSize(horizontal: false, vertical: true)
 
                 HStack {
-                    Text("Default values to copy from previous month:").font(.zen(12)).foregroundStyle(Zen.ink2)
+                    Text(L10n.t("onboarding.s4.copyScopeLabel")).font(.zen(12)).foregroundStyle(Zen.ink2)
                     Spacer(minLength: 8)
-                    OnbSelect(options: [(MonthCopyScope.budgetsAndActuals, "Both Planned Budgets & Direct Actuals"),
-                                        (.budgetsOnly, "Planned Budgets Only (Reset Actuals to 0)")],
+                    OnbSelect(options: [(MonthCopyScope.budgetsAndActuals, L10n.t("onboarding.s4.copyScopeBoth")),
+                                        (.budgetsOnly, L10n.t("onboarding.s4.copyScopeBudgetsOnly"))],
                               selection: $model.monthCopyScope, height: 32, horizontalPadding: 10)
                 }
                 .padding(.top, 4)
             }
             .onbBox()
         }
+    }
+
+    private func passphraseField(text: Binding<String>, placeholder: String) -> some View {
+        HStack(spacing: 8) {
+            ZIcon("lock", size: 14).foregroundStyle(Zen.ink3)
+            SecureField("", text: text, prompt: Text(placeholder).foregroundStyle(Zen.ink3))
+                .textFieldStyle(.plain)
+                .font(.zen(12))
+                .foregroundStyle(Zen.ink)
+        }
+        .padding(.leading, 10).padding(.trailing, 12)
+        .frame(height: 36)
+        .frame(maxWidth: .infinity)
+        .background(Zen.surface, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
     }
 
     private func preferenceCard(isOn: Binding<Bool>, title: String, detail: String) -> some View {

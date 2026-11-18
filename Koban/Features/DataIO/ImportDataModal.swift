@@ -58,9 +58,9 @@ struct ImportDataModal: View {
                     .foregroundStyle(previewData == nil ? Zen.accent : Zen.indigo)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 8) {
-                        Text(previewData == nil ? "Import Data into Koban" : "Preview & Confirm Data Import")
+                        Text(previewData == nil ? L10n.t("import.title") : L10n.t("import.preview.title"))
                             .font(.zen(16, .medium)).foregroundStyle(Zen.ink)
-                        DataIOPill(text: previewData == nil ? "Step 1 of 2: Source" : "Step 2 of 2: Review",
+                        DataIOPill(text: previewData == nil ? L10n.t("import.step1") : L10n.t("import.step2"),
                                    foreground: Zen.ink2, background: Zen.raised, border: Zen.line)
                     }
                     Text(previewData.map { "Review the parsed data from \"\($0.fileName)\" before applying changes to your ledger" }
@@ -91,13 +91,13 @@ struct ImportDataModal: View {
 
     private var cards: [SourceCard] {
         [
-            SourceCard(id: .budgetSheet, title: "Monthly Budget Sheet",
+            SourceCard(id: .budgetSheet, title: L10n.t("import.budgetSheet"),
                        subtitle: "Import category groups, categories, budgeted amounts, and actuals from a 2-column or flat spreadsheet.",
                        formats: ".xlsx, .xls, .csv", icon: "tablecells", accent: Zen.positive),
-            SourceCard(id: .transactions, title: "Transactions / Bank Statement",
+            SourceCard(id: .transactions, title: L10n.t("import.transactions"),
                        subtitle: "Import itemized income & expense entries (Date, Description, Amount, Category, Client, Invoice, VAT %).",
                        formats: ".csv, .xlsx, .xls", icon: "list.bullet.rectangle.portrait", accent: Zen.indigo),
-            SourceCard(id: .databaseBackup, title: "Encrypted Database Backup",
+            SourceCard(id: .databaseBackup, title: L10n.t("import.backup"),
                        subtitle: "Restore a full AES-256-GCM encrypted Koban SQLite database (.db) or JSON backup snapshot.",
                        formats: ".db, .sqlite, .json", icon: "cylinder.split.1x2", accent: Zen.accent),
         ]
@@ -177,13 +177,13 @@ struct ImportDataModal: View {
 
             HStack(spacing: 10) {
                 Spacer()
-                Button("Cancel", action: closeAll)
+                Button(L10n.t("common.cancel"), action: closeAll)
                     .buttonStyle(.zen(.ghost, height: 36, padding: 16))
                 Button(action: selectFile) {
                     HStack(spacing: 8) {
                         ZIcon(confirmAndPreview ? "eye" : "square.and.arrow.up", size: 14)
                         Text(isBusy ? "Reading File…"
-                             : confirmAndPreview ? "Select File & Preview Import…" : "Select File & Import Immediately…")
+                             : confirmAndPreview ? L10n.t("import.selectFile") : "Select File & Import Immediately…")
                     }
                 }
                 .buttonStyle(DataIOInkButtonStyle(height: 36, padding: 20))
@@ -317,20 +317,20 @@ struct ImportDataModal: View {
                     previewData = nil
                     excluded = []
                 } label: {
-                    HStack(spacing: 6) { ZIcon("arrow.left", size: 14); Text("Choose Different File") }
+                    HStack(spacing: 6) { ZIcon("arrow.left", size: 14); Text(L10n.t("import.chooseOther")) }
                 }
                 .buttonStyle(DataIORaisedButtonStyle(height: 36, padding: 14, background: Zen.surface))
                 .disabled(isBusy)
 
                 Spacer()
 
-                Button("Cancel Import", action: closeAll)
+                Button(L10n.t("import.cancel"), action: closeAll)
                     .buttonStyle(.zen(.ghost, height: 36, padding: 16))
                     .disabled(isBusy)
                 Button { confirm(p, budgetSelected: bm.selectedCount, txSelected: tm.selectedCount) } label: {
                     HStack(spacing: 8) {
                         ZIcon("checkmark.circle", size: 16)
-                        Text(isBusy ? "Completing Import…" : "Confirm & Complete Import (\(confirmCountLabel(p, bm, tm)))")
+                        Text(isBusy ? "Completing Import…" : "\(L10n.t("import.confirm")) (\(confirmCountLabel(p, bm, tm)))")
                     }
                 }
                 .buttonStyle(DataIOInkButtonStyle(height: 36, padding: 20))

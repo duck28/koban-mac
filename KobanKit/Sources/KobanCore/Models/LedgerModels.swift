@@ -194,6 +194,8 @@ struct AppSettings: Codable, Hashable, Sendable {
     var confirmAndPreviewBeforeImport: Bool?
     /// UI language code (e.g. "en", "de", "hu", "ja").
     var language: String?
+    /// Automatically check GitHub Releases for app updates on startup.
+    var autoCheckUpdates: Bool?
     var webdav: WebDavConfig?
 }
 
@@ -292,7 +294,8 @@ extension LedgerState {
             autoPromptCopyOnEmptyMonth: true,
             confirmBeforeDelete: true,
             defaultHideZeroRows: false,
-            confirmAndPreviewBeforeImport: true
+            confirmAndPreviewBeforeImport: true,
+            autoCheckUpdates: true
         )
         return LedgerState(
             version: 1,

@@ -62,6 +62,42 @@ struct MainView: View {
         VStack(spacing: 0) {
             TopBar()
                 .zIndex(2)
+            if UpdateChecker.shared.updateAvailable && !UpdateChecker.shared.bannerDismissed,
+               let latest = UpdateChecker.shared.latestVersion {
+                HStack(spacing: 12) {
+                    HStack(spacing: 8) {
+                        ZIcon("arrow.down.circle", size: 14).foregroundStyle(Zen.positive)
+                        Text(L10n.t("settings.updates.available")
+                            .replacingOccurrences(of: "{latest}", with: latest)
+                            .replacingOccurrences(of: "{current}", with: UpdateChecker.shared.currentVersion))
+                            .font(.zen(12, .medium))
+                            .foregroundStyle(Zen.ink)
+                    }
+                    Spacer(minLength: 8)
+                    Button {
+                        UpdateChecker.shared.openDownloadOrRelease()
+                    } label: {
+                        HStack(spacing: 6) {
+                            ZIcon("arrow.down.circle", size: 12)
+                            Text(L10n.t("settings.updates.download").replacingOccurrences(of: "{version}", with: latest))
+                        }
+                        .font(.zen(11, .medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 28)
+                        .background(Zen.positive, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+
+                    ZenMiniButton(icon: "xmark", size: 14, tint: Zen.ink3, hoverTint: Zen.ink, help: L10n.t("common.close")) {
+                        UpdateChecker.shared.bannerDismissed = true
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Zen.positive.opacity(0.12))
+                .overlay(alignment: .bottom) { Rectangle().fill(Zen.positive.opacity(0.3)).frame(height: 1) }
+            }
             HStack(spacing: 0) {
                 if store.isSidebarOpen {
                     SidebarView()

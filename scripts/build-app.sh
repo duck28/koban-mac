@@ -14,7 +14,7 @@ OUT=${OUT:-$ROOT/build/app}
 APP=$OUT/Koban.app
 FLAGS=(-O)
 [[ "${1:-}" == "--debug" ]] && FLAGS=(-D DEBUG -Onone)
-VERSION=${VERSION:-0.1.0}
+VERSION=${VERSION:-0.3.0}
 BUILD_NUMBER=${BUILD_NUMBER:-1}
 ARCH_LIST=(${=ARCHS:-$(uname -m)})
 

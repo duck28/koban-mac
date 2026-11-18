@@ -29,6 +29,7 @@ struct SettingsView: View {
                     backupSection.id("backups")
                     DbLocationCard().id("db")
                     WebDavSyncCard().id("webdav")
+                    updatesSection.id("updates")
                 }
                 .padding(24)
                 .frame(maxWidth: 1024)
@@ -570,6 +571,95 @@ struct SettingsView: View {
         store.applySettingsChange {
             $0.backupDir = url.path
             $0.autoBackup = true
+        }
+    }
+
+    // MARK: - Updates
+
+    private var updatesSection: some View {
+        let checker = UpdateChecker.shared
+        return SettingsSection(icon: "arrow.triangle.2.circlepath", tint: Zen.indigo,
+                               title: L10n.t("settings.updates.title"),
+                               subtitle: L10n.t("settings.updates.desc")) {
+            Text("\(L10n.t("settings.updates.currentVersion")): v\(checker.currentVersion)")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Zen.ink2)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .background(Zen.app, in: Capsule())
+                .overlay(Capsule().strokeBorder(Zen.line, lineWidth: 1))
+        } content: {
+            SettingsToggleRow(title: L10n.t("settings.updates.autoCheck"),
+                              detail: L10n.t("settings.updates.autoCheckDesc"),
+                              isOn: setting(\.autoCheckUpdates, default: true))
+
+            HStack(spacing: 12) {
+                Group {
+                    if checker.isChecking {
+                        Text(L10n.t("settings.updates.checking"))
+                            .foregroundStyle(Zen.ink2)
+                    } else if let err = checker.lastError {
+                        Text(L10n.t("settings.updates.error").replacingOccurrences(of: "{error}", with: err))
+                            .foregroundStyle(Zen.accent)
+                    } else if checker.hasChecked {
+                        if checker.updateAvailable, let latest = checker.latestVersion {
+                            Text(L10n.t("settings.updates.available")
+                                .replacingOccurrences(of: "{latest}", with: latest)
+                                .replacingOccurrences(of: "{current}", with: checker.currentVersion))
+                                .fontWeight(.medium)
+                                .foregroundStyle(Zen.positive)
+                        } else {
+                            Text(L10n.t("settings.updates.upToDate")
+                                .replacingOccurrences(of: "{version}", with: checker.currentVersion))
+                                .foregroundStyle(Zen.ink2)
+                        }
+                    }
+                }
+                .font(.zen(12))
+                .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 8)
+
+                Button {
+                    checker.openReleasesPage()
+                } label: {
+                    HStack(spacing: 6) {
+                        ZIcon("arrow.up.right.square", size: 13)
+                        Text(L10n.t("settings.updates.viewReleases"))
+                    }
+                }
+                .buttonStyle(.zen(.outline, height: 34, radius: 8, padding: 12))
+
+                if checker.updateAvailable, let latest = checker.latestVersion {
+                    Button {
+                        checker.openDownloadOrRelease()
+                    } label: {
+                        HStack(spacing: 6) {
+                            ZIcon("arrow.down.circle", size: 13)
+                            Text(L10n.t("settings.updates.download").replacingOccurrences(of: "{version}", with: latest))
+                                .fontWeight(.medium)
+                        }
+                        .font(.zen(12))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .frame(height: 34)
+                        .background(Zen.positive, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button {
+                    Task { await checker.checkNow(notifyStore: store) }
+                } label: {
+                    HStack(spacing: 6) {
+                        ZIcon("arrow.triangle.2.circlepath", size: 13)
+                        Text(checker.isChecking ? L10n.t("settings.updates.checking") : L10n.t("settings.updates.checkNow"))
+                            .fontWeight(.medium)
+                    }
+                }
+                .buttonStyle(.zen(.ink, height: 34, radius: 8, padding: 16))
+                .disabled(checker.isChecking)
+            }
         }
     }
 }

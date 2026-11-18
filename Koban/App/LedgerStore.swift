@@ -142,6 +142,7 @@ final class LedgerStore {
                 if phase == .ready {
                     isAppLocked = shouldLockAfterLoad()
                     webDavAfterLoad() // WebDAV primary storage: startup sync (Features/DataIO)
+                    UpdateChecker.shared.checkOnLaunchIfEnabled(autoCheck: loaded.settings.autoCheckUpdates ?? true)
                 }
             } else {
                 phase = .needsSetup
