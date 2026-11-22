@@ -133,11 +133,11 @@ enum Argon2id {
         defer { block.withUnsafeMutableBytes { zeroize($0) } }
 
         if input.isEmpty {
-            block.withUnsafeBytes { raw in
+            block.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
                 blake2bCompress(h: &h, block: raw, t0: 0, t1: 0, last: true)
             }
         } else {
-            input.withUnsafeBytes { rawInput in
+            input.withUnsafeBytes { (rawInput: UnsafeRawBufferPointer) in
                 while offset < input.count {
                     let remaining = input.count - offset
                     let take = min(128, remaining)
@@ -145,7 +145,7 @@ enum Argon2id {
                     totalBytes &+= UInt64(take)
                     for i in 0..<128 { block[i] = 0 }
                     for i in 0..<take { block[i] = rawInput[offset + i] }
-                    block.withUnsafeBytes { rawBlock in
+                    block.withUnsafeBytes { (rawBlock: UnsafeRawBufferPointer) in
                         blake2bCompress(h: &h, block: rawBlock, t0: totalBytes, t1: 0, last: isLast)
                     }
                     offset += take
@@ -197,7 +197,7 @@ enum Argon2id {
 
         mutating func loadBytes(_ bytes: Data) {
             precondition(bytes.count == Argon2id.blockLen)
-            bytes.withUnsafeBytes { raw in
+            bytes.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
                 for i in 0..<Argon2id.qwordsInBlock {
                     var w: UInt64 = 0
                     let base = i * 8
@@ -211,7 +211,7 @@ enum Argon2id {
 
         func toBytes() -> Data {
             var out = Data(count: Argon2id.blockLen)
-            out.withUnsafeMutableBytes { dst in
+            out.withUnsafeMutableBytes { (dst: UnsafeMutableRawBufferPointer) in
                 let ptr = dst.bindMemory(to: UInt8.self)
                 for i in 0..<Argon2id.qwordsInBlock {
                     let w = v[i]

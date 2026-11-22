@@ -157,6 +157,7 @@ enum DataIOStorage {
                 throw StorageError("Failed to copy active SQLite database: \(error.localizedDescription)")
             }
             copySidecars(from: current, to: target)
+        }
         if !fm.fileExists(atPath: current.path) && !fm.fileExists(atPath: target.path) {
             do {
                 try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)

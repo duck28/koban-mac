@@ -176,17 +176,7 @@ struct AuthConfig: Codable, Hashable, Sendable {
         return String(decoding: try encoder.encode(self), as: UTF8.self)
     }
 
-    // MARK: - Master passphrase (handleSetMasterPassphrase / Remove Passphrase)
-
-    func withMasterPassphrase(_ passphrase: String) -> AuthConfig {
-        let v = AuthCrypto.hashPassphraseVerifier(passphrase)
-        var next = self
-        next.enabled = true
-        next.hasMasterPassphrase = true
-        next.passphraseSaltB64 = v.saltB64
-        next.passphraseVerifierHashB64 = v.hashB64
-        return next
-    }
+    // MARK: - Legacy passphrase removal
 
     func withoutMasterPassphrase() -> AuthConfig {
         var next = self
