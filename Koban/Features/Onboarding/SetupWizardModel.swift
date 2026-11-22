@@ -174,8 +174,6 @@ final class SetupWizardModel {
 
     // MARK: Step 4
 
-    var requiresCustomPassphrase: Bool { !hasCustomPassphrase }
-
     var requiresCustomPassphrase: Bool { !alreadyConfiguredV2 }
 
     var minPassphraseLen: Int {

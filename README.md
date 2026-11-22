@@ -76,13 +76,13 @@ The app target compiles `KobanKit/Sources/KobanCore` directly into the same modu
 | Settings, login/lock, languages | `SettingsView.tsx`, `AuthLockScreen.tsx`, `utils/auth.ts`, `i18n/` | ✅ `Settings/` (device-local Touch ID Keychain DEK replaces Windows Hello TPM + DPAPI; Key File & Recovery Key work across both OSes) |
 | Setup wizard | `OnboardingModal.tsx` | ✅ `Onboarding/` |
 
-## Not verified yet on macOS
+## Verification on macOS
 
-The Vault Format v2 updates were authored on Windows where there is no Swift toolchain, so they have **not yet been compiled or run with `swift test`**. On a Mac:
+`swift test` (`KobanKit`) and the universal `Koban.app` build (`scripts/build-app.sh`) run automatically on `macos-15` in GitHub Actions (`CI` and `Release`). When running interactively on a Mac:
 
 1. `make test` (or `cd KobanKit && swift test`): verifies RFC 9106 Argon2id, `docs/vault-v2-test-vectors.json` cross-platform parity with Rust, Composite Key Files, Recovery Key, v1→v2 migration, external modification checks, and `LedgerMerge`.
 2. `make open`, then build and run the app.
-3. Open a Vault v2 `koban.db` created on Windows (with Master Password, optional `.key` file, or Recovery Key) via **Open Existing koban.db…** / WebDAV / cloud folder sync and confirm cross-platform unlock and merge work seamlessly.
+3. Open a Vault v2 `koban.db` created on Windows (with Master Password, optional `.key` file, or Recovery Key) via **Open Existing koban.db…** / WebDAV / cloud folder sync and confirm cross-platform unlock and merge work cleanly.
 
 ## Releases
 
