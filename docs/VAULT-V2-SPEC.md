@@ -1,6 +1,6 @@
 # Koban vault format v2: key hierarchy, unlock methods, migration — shared spec (Windows + macOS)
 
-Status: **Draft** · Applies to: `koban-windows` (Rust `src-tauri/src/lib.rs` + React) and `koban-mac` (`KobanKit/Sources/KobanCore/Vault`, `Koban/Features/Settings`).
+Status: **Implemented (Vault Format v2)** · Applies to: `koban-windows` (Rust `src-tauri/src/` + React) and `koban-mac` (`KobanKit/Sources/KobanCore/Vault`, `Koban/Features/`).
 
 Both builds MUST implement identical formats so one `koban.db` keeps working across Windows and macOS devices, backups and WebDAV. Any constant in this document is part of the format: change it on both sides or not at all.
 
@@ -47,9 +47,9 @@ Both builds MUST implement identical formats so one `koban.db` keeps working acr
  DEK is stored only wrapped (AES-256-GCM) by one KEK per key slot:
 
   synced slots (in koban.db, table key_slots)        device slots (never in koban.db)
-  ├─ passphrase   KEK = Argon2id(passphrase)         ├─ windows_hello  KEK from TPM-backed Hello key signature (+ DPAPI)
-  ├─ recovery     KEK = HKDF(recovery key)           └─ mac_keychain   DEK itself stored in Keychain, .biometryCurrentSet
-  └─ webauthn_prf KEK = HKDF(PRF output)  (optional, phase 3)
+  ├─ passphrase        KEK = Argon2id(passphrase)    ├─ windows_hello  KEK from TPM-backed Hello key signature (+ DPAPI)
+  ├─ composite_keyfile KEK = Argon2id(HMAC(kf,sha))  └─ mac_keychain   DEK itself stored in Keychain (Touch ID / Mac login)
+  └─ recovery          KEK = HKDF(recovery key)
 ```
 
 Rules:
@@ -78,7 +78,7 @@ Removed in v2: `kdf`, `auth_config` (contents move into the encrypted ledger or 
 ```sql
 CREATE TABLE IF NOT EXISTS key_slots (
     id             TEXT PRIMARY KEY,   -- base64url(16 random bytes), no padding
-    kind           TEXT NOT NULL,      -- 'passphrase' | 'recovery' | 'webauthn_prf'
+    kind           TEXT NOT NULL,      -- 'passphrase' | 'composite_keyfile' | 'recovery' | 'webauthn_prf'
     label          TEXT NOT NULL,      -- user-visible, e.g. "Passphrase", "Recovery key (2026-11-10)"
     params         TEXT NOT NULL,      -- JSON, per kind (§4)
     nonce_b64      TEXT NOT NULL,      -- 12 bytes
@@ -118,7 +118,21 @@ Dropped in v2 (`DROP TABLE`, then `VACUUM`). The full-state row is already the s
 - Policy when setting: minimum 12 characters + a strength meter; offer a generated passphrase. No maximum below 1024 bytes.
 - Target cost: about 0.5–1 s on a low-end supported machine. Benchmark before freezing the defaults (open question Q4).
 
-Libraries: Rust `argon2` (RustCrypto). Swift: CryptoKit has no Argon2 → vendor the PHC reference implementation (`phc-winner-argon2`, CC0 / Apache-2.0) as a SwiftPM C target in KobanKit. Both are checked against RFC 9106 test vectors and the shared vectors (§9).
+Libraries: Pure RFC 7693 BLAKE2b + RFC 9106 Argon2id in `vault_crypto.rs` (Windows / Rust) and `Argon2id.swift` (macOS / Swift). Both are verified against RFC 9106 §5.3 and the shared test vectors (`docs/vault-v2-test-vectors.json`).
+
+### 4.1b `composite_keyfile` (optional KeePassXC-style Password + Key File)
+
+```json
+{ "kdf": "argon2id", "v": 19, "m_kib": 65536, "t": 3, "p": 4, "salt_b64": "<16 random bytes>", "keyfile_fingerprint": "<8 hex chars>" }
+```
+
+- Key file formats accepted:
+  1. Koban `.key` JSON (`{ "version": 2, "format": "koban-keyfile", "keyB64": "<32 bytes>", "checksumSha256": "<64 hex>", "fingerprint": "<8 hex>", "createdAt": <unix secs> }`)
+  2. Raw 64-character hex file (32 bytes)
+  3. Any arbitrary file (KeePassXC-compatible: `keyfile_secret = SHA-256(file_bytes)`)
+- Composite IKM: `ikm = HMAC-SHA256(key = keyfile_secret, msg = SHA-256(NFC(passphrase)))`
+- KEK = `Argon2id(ikm, salt, m_kib, t, p, tag length 32)` (minimum 8 chars passphrase when paired with a Key File, minimum 12 chars for passphrase-only).
+- The `.key` file MUST remain outside synced cloud folders so compromise of `koban.db` alone reveals nothing.
 
 ### 4.2 `recovery` (strongly recommended, offered at setup)
 
@@ -208,7 +222,7 @@ Removed: `set_vault_passphrase`, `load_ledger_db(passphrase)`, `wrap_vault_secre
 ### 6.3 `auth_settings` (plaintext, minimal)
 
 ```json
-{ "autoPromptDevice": true, "autoLockMinutes": 15 }
+{ "autoPromptDevice": true, "autoLockMinutes": 15, "lockOnMinimize": false }
 ```
 
 Everything else from v1 `AuthConfig` (`userDisplayName`, passkey labels, …) moves into `LedgerState.settings` (encrypted). The lock screen shows slot labels from `key_slots`. `autoLockMinutes` stays plaintext so the timer works before the ledger is parsed. Tampering with it only weakens auto-lock for an attacker who already has file write access.
@@ -261,7 +275,12 @@ Still: release both platforms' v2 together, and have the v2 WebDAV push refuse t
 - Remove the `localStorage` ledger/auth mirrors (§7.2.4) — do this **first**, even before v2 lands.
 - Rust: `zeroize` for DEK/KEK buffers. Swift: keep keys in `SymmetricKey`, not `Data`/`String`.
 - Correct UI copy: no "PBKDF2" claims; describe Argon2id + AES-256-GCM.
-- Replace the PowerShell-based Windows Hello calls with `windows` crate calls (the current `check_windows_hello_available` reports `AVAILABLE` on any exception).
+- Replace the PowerShell-based Windows Hello calls with `windows` crate calls (`KeyCredentialManager` TPM key + `CryptProtectData` DPAPI envelope with AAD `koban/v2/device/<vault_id>/windows_hello` & `windows_hello_dpapi`).
+- OS Credential Store for WebDAV passwords: stripped out of `settings.webdav.password` prior to encrypting `ledger_state` so synced databases never contain plaintext WebDAV passwords; stored locally via DPAPI (`%LOCALAPPDATA%\Koban\credentials\webdav.bin`, entropy `"koban/v2/webdav-credentials"`) on Windows and Keychain (`com.roland-matuz.koban.webdav`) on macOS.
+- Sync safety across cloud folders (Synology Drive, OneDrive, iCloud, Dropbox) and WebDAV:
+  - SQLite `PRAGMA journal_mode = DELETE`, `PRAGMA synchronous = FULL`, and atomic staged-sibling write + rename.
+  - SHA-256 external file modification guard (`EXTERNAL_DB_MODIFIED:` on write, periodic / focus `vault_check_external_change`).
+  - Deterministic record-level ledger merge (`ledgerMerge.ts` / `LedgerMerge.swift`) uniting `groups`, `categories`, `monthlyBudgets`, `transactions`, `recurringRules`, `savingsGoals`, `accounts`, `netWorthSnapshots`, and `yearlyPlanItems` while keeping local device backup paths & WebDAV mode scoped per device.
 
 ## 9. Test vectors and cross-platform tests
 

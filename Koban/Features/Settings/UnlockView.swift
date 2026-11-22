@@ -1,419 +1,422 @@
+import AppKit
 import SwiftUI
 
-// OWNER: Settings & Auth. Keep `init(message: String?)`: RootView shows it for a locked vault
-// (phase .locked) and, with message nil, over the loaded app when `store.isAppLocked`.
-/// Port of src/components/AuthLockScreen.tsx. Windows Hello / passkeys → Touch ID (LocalAuthentication)
-/// with the vault passphrase kept in the Keychain (TouchIDKeychain).
-///
-/// Two situations:
-/// - vault locked (phase .locked): the ledger is still encrypted with a custom passphrase; Touch ID
-///   returns the stored passphrase, or the user types it → `store.unlock(passphrase:)`.
-/// - app locked (isAppLocked): the ledger is decrypted; Touch ID / master passphrase verify the user,
-///   then `store.completeSignIn()` (handleUnlockSuccess). Without any credential the first-time
-///   enrollment view is shown, like on Windows.
+/// Vault Format v2 Unlock & Legacy v1 Migration screen.
+/// Mirrors `src/components/AuthLockScreen.tsx`.
 struct UnlockView: View {
     @Environment(LedgerStore.self) private var store
     let message: String?
 
-    @State private var displayName = ""
-    @State private var passphraseInput = ""
-    @State private var confirmPassphraseInput = ""
+    @State private var unlockTab: UnlockTab = .password
+    @State private var passphrase = ""
     @State private var showPassphrase = false
-    @State private var isBusy = false
+    @State private var keyfileURL: URL?
+    @State private var showKeyFileBox = false
+    @State private var rememberKeyfile = false
+    @State private var recoveryInput = ""
+
+    // Legacy v1 -> Vault v2 migration state
+    @State private var v1Passphrase = ""
+    @State private var v1Unlocked = false
+    @State private var v1OwnerName: String?
+    @State private var newPassphrase = ""
+    @State private var confirmNewPassphrase = ""
+    @State private var migrationKeyfileURL: URL?
+    @State private var rememberMigrationKeyfile = false
+    @State private var createRecoveryKey = true
+
+    @State private var busy = false
     @State private var errorMsg: String?
-    @State private var statusMsg: String?
-    @State private var autoPromptTriggered = false
-    @FocusState private var passphraseFocused: Bool
+    @State private var statusNote: String?
+    @State private var didAutoTouchID = false
 
-    init(message: String?) {
-        self.message = message
-    }
+    enum UnlockTab { case password, recovery }
 
-    private var auth: AuthCenter { AuthCenter.shared }
-    private var config: AuthConfig { auth.config }
-
-    private var vaultLocked: Bool {
-        if case .locked = store.phase { return true }
-        return false
-    }
-
-    private var hasCustomDbPassphrase: Bool { vaultLocked || store.hasCustomPassphrase }
-
-    private var hasCredentialsConfigured: Bool {
-        AuthRules.hasCredentialsConfigured(config: config, hasMacCredential: auth.hasMacCredential,
-                                           hasCustomDbPassphrase: hasCustomDbPassphrase)
-    }
-
-    private var ownerName: String { config.userDisplayName.isEmpty ? "Koban Owner" : config.userDisplayName }
+    private var vaultStatus: VaultStatus? { AuthCenter.shared.vaultStatus }
+    private var needsMigration: Bool { vaultStatus?.needsMigration ?? false }
+    private var hasLegacyCustom: Bool { vaultStatus?.hasLegacyCustomPassphrase ?? false }
+    private var requiresKeyFile: Bool { vaultStatus?.requiresKeyFile ?? false }
+    private var touchIDEnrolled: Bool { vaultStatus?.deviceSlotEnrolled ?? false }
 
     var body: some View {
-        ZStack {
-            Zen.app.ignoresSafeArea()
-            WindowDragArea().ignoresSafeArea()
-            DotGrid().opacity(0.03).allowsHitTesting(false).ignoresSafeArea()
-
-            GeometryReader { geo in
-                ScrollView {
-                    card
-                        .padding(24)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: geo.size.height)
+        VaultCard(
+            title: needsMigration ? "Upgrade Legacy Database (v2)" : L10n.t("lock.signIn"),
+            subtitle: vaultStatus?.dbPath.components(separatedBy: "/").last ?? "koban.db"
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                if let err = errorMsg ?? message, !err.isEmpty {
+                    callOut(text: err, isError: true)
                 }
-                .scrollBounceBehavior(.basedOnSize)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear(perform: appear)
-        .onChange(of: message) { _, new in if let new { errorMsg = new; statusMsg = nil } }
-        .onReceive(NotificationCenter.default.publisher(for: .kobanDebugAction)) { note in
-            #if DEBUG
-            if (note.userInfo?["name"] as? String) == "auth-error" {
-                errorMsg = "Incorrect Master Passphrase or PIN. Please try again."
-            }
-            #endif
-        }
-    }
-
-    // MARK: Card
-
-    private var card: some View {
-        VStack(spacing: 0) {
-            header
-            VStack(alignment: .leading, spacing: 20) {
-                if let errorMsg {
-                    SettingsCallout(text: errorMsg, icon: "exclamationmark.circle", tint: Zen.accent, radius: 12, padding: 12)
-                } else if let statusMsg {
-                    SettingsCallout(text: statusMsg, icon: "sparkles", tint: Zen.indigo, radius: 12, padding: 12)
+                if let statusNote, errorMsg == nil {
+                    callOut(text: statusNote, isError: false)
                 }
-                if hasCredentialsConfigured { signInView } else { enrollmentView }
+
+                if needsMigration {
+                    migrationBody
+                } else {
+                    v2UnlockBody
+                }
             }
-            .padding(24)
-            footer
-        }
-        .frame(width: 448)
-        .background(Zen.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Zen.line, lineWidth: 1))
-        .overlay(alignment: .topTrailing) {
-            LanguageSelect(variant: .compact, usesTopBarMenu: false)
-                .padding(14)
-        }
-        .shadow(color: .black.opacity(0.22), radius: 32, y: 18)
-    }
-
-    private var header: some View {
-        VStack(spacing: 0) {
-            KobanLogo(height: 28).padding(.bottom, 14)
-            HStack(spacing: 6) {
-                ZIcon("checkmark.shield", size: 12)
-                Text(L10n.t("lock.encrypted")).font(.zen(10, .medium))
-            }
-            .foregroundStyle(Zen.positive)
-            .padding(.horizontal, 10).padding(.vertical, 2)
-            .background(Zen.positive.opacity(0.1), in: Capsule())
-            .overlay(Capsule().strokeBorder(Zen.positive.opacity(0.25), lineWidth: 1))
-            .padding(.bottom, 8)
-
-            Text(hasCredentialsConfigured ? L10n.t("lock.signIn") : L10n.t("lock.configure"))
-                .font(.zen(18, .semibold))
-                .foregroundStyle(Zen.ink)
-
-            Text(hasCredentialsConfigured
-                 ? L10n.tf("lock.subWelcome", ["name": ownerName])
-                 : L10n.t("lock.subConfigureMac"))
-                .font(.zen(12))
+        } footer: {
+            HStack {
+                Button { store.openExistingDatabase() } label: {
+                    HStack(spacing: 5) {
+                        ZIcon("folder", size: 12)
+                        Text(L10n.t("lock.openAnotherDb"))
+                    }
+                }
+                .buttonStyle(.plain)
                 .foregroundStyle(Zen.ink2)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 320)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 4)
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 28)
-        .padding(.bottom, 20)
-        .frame(maxWidth: .infinity)
-        .background(Zen.app.opacity(0.5))
-        .overlay(alignment: .bottom) { Rectangle().fill(Zen.line).frame(height: 1) }
-    }
 
-    private var footer: some View {
-        HStack {
-            HStack(spacing: 6) {
-                ZIcon("checkmark.circle", size: 14).foregroundStyle(Zen.positive)
-                Text(TouchIDKeychain.biometryAvailable ? L10n.t("lock.bioReadyTouchId") : L10n.t("lock.bioReadyKeychain"))
+                Spacer()
+
+                Button { store.presentWebDavConnect() } label: {
+                    HStack(spacing: 5) {
+                        ZIcon("icloud.and.arrow.down", size: 12)
+                        Text(L10n.t("onboarding.openWebDav"))
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Zen.ink2)
             }
-            Spacer()
-            Text(L10n.t("lock.zeroKnowledgeFooter"))
         }
-        .font(.zen(11))
-        .foregroundStyle(Zen.ink3)
-        .padding(.horizontal, 24)
-        .padding(.vertical, 12)
-        .background(Zen.app.opacity(0.4))
-        .overlay(alignment: .top) { Rectangle().fill(Zen.line).frame(height: 1) }
+        .onAppear {
+            AuthCenter.shared.refresh(store: store, force: true)
+            if let remembered = AuthCenter.shared.rememberedKeyfileURL {
+                keyfileURL = remembered
+                rememberKeyfile = true
+                showKeyFileBox = true
+            } else if requiresKeyFile {
+                showKeyFileBox = true
+            }
+            v1Unlocked = !hasLegacyCustom
+            if needsMigration && !hasLegacyCustom {
+                if let preview = try? store.unlockV1ForMigration(passphrase: nil) {
+                    v1Unlocked = true
+                    v1OwnerName = preview.state.settings.ownerDisplayName
+                }
+            }
+            autoTriggerTouchIDIfReady()
+        }
     }
 
-    // MARK: Existing user sign-in
+    // MARK: - Vault Format v2 Unlock
 
     @ViewBuilder
-    private var signInView: some View {
-        let hasMac = auth.hasMacCredential
-        if hasMac {
-            Button { Task { await signInWithTouchID() } } label: {
-                HStack(spacing: 10) {
-                    ZIcon("touchid", size: 16)
-                    Text(L10n.t("lock.passkeyBtn"))
-                    ZIcon("arrow.right", size: 14).padding(.leading, 2)
+    private var v2UnlockBody: some View {
+        if touchIDEnrolled {
+            Button {
+                triggerTouchID()
+            } label: {
+                HStack(spacing: 8) {
+                    ZIcon("touchid", size: 15)
+                    Text("Unlock with \(TouchIDKeychain.methodName)")
+                        .fontWeight(.medium)
                 }
                 .frame(maxWidth: .infinity)
-                .fontWeight(.medium)
             }
-            .buttonStyle(.zen(.ink, height: 44, radius: 12, fontSize: 12))
-            .disabled(isBusy)
-            .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+            .buttonStyle(.zen(.ink, height: 38, radius: 10))
+            .disabled(busy)
         }
 
-        if hasMac && (config.hasMasterPassphrase || hasCustomDbPassphrase) {
-            AuthOrDivider(text: L10n.t("lock.orPassphrase"))
-        }
-
-        if config.hasMasterPassphrase || hasCustomDbPassphrase || !hasMac {
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(hasCustomDbPassphrase && vaultLocked ? L10n.t("lock.vaultPassphraseLabel") : L10n.t("lock.passphraseLabel"))
-                        .font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
-                    SettingsTextField(icon: "key", placeholder: L10n.t("lock.passphrasePlaceholder"), text: $passphraseInput,
-                                      secure: true, height: 40, radius: 12, background: Zen.raised,
-                                      revealToggle: $showPassphrase, onSubmit: signInWithPassphrase)
-                        .focused($passphraseFocused)
-                }
-                Button(action: signInWithPassphrase) {
-                    HStack(spacing: 8) {
-                        ZIcon("lock", size: 14)
-                        Text(L10n.t("lock.unlockPassphrase"))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .fontWeight(.medium)
-                }
-                .buttonStyle(.zen(hasMac ? .raised : .ink, height: 40, radius: 12, fontSize: 12))
-                .overlay {
-                    if hasMac { RoundedRectangle(cornerRadius: 12).strokeBorder(Zen.line, lineWidth: 1) }
-                }
-                .keyboardShortcut(hasMac ? nil : .defaultAction)
-                .disabled(isBusy)
+        HStack(spacing: 4) {
+            tabPill(L10n.t("lock.passphraseLabel"), icon: "lock", selected: unlockTab == .password) {
+                unlockTab = .password
+                errorMsg = nil
+            }
+            tabPill("Recovery Key", icon: "key", selected: unlockTab == .recovery) {
+                unlockTab = .recovery
+                errorMsg = nil
             }
         }
+        .padding(3)
+        .background(Zen.raised, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Zen.line, lineWidth: 1))
 
-        if vaultLocked {
-            Button { store.openExistingDatabase() } label: {
-                Text(L10n.t("lock.openAnotherDb")).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.zen(.ghost, height: 30, radius: 8, fontSize: 11))
-        }
-    }
-
-    // MARK: First-time enrollment
-
-    private var enrollmentView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.t("lock.displayNameLabel")).font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
-                SettingsTextField(icon: "person.badge.shield.checkmark", placeholder: L10n.t("settings.login.ownerPlaceholder"), text: $displayName,
-                                  height: 36, radius: 12, background: Zen.raised)
-            }
-
+        if unlockTab == .password {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 10) {
-                    ZIcon("touchid", size: 16).foregroundStyle(Zen.indigo).padding(.top, 1)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(L10n.t("lock.touchIdRecommended")).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
-                        Text(TouchIDKeychain.biometryAvailable
-                             ? L10n.t("lock.touchIdBioDesc")
-                             : L10n.t("lock.touchIdPasswordDesc"))
-                            .font(.zen(11)).foregroundStyle(Zen.ink2).lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                let windowsOnly = config.passkeys.filter { $0.kind != TouchIDKeychain.recordKind }.count
-                if windowsOnly > 0 {
-                    Text("\(windowsOnly) WebAuthn passkey\(windowsOnly == 1 ? "" : "s") from Windows can only be used on Windows and \(windowsOnly == 1 ? "is" : "are") kept unchanged.")
-                        .font(.zen(11)).foregroundStyle(Zen.ink3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Button { Task { await enrollTouchIDFirstTime() } } label: {
-                    HStack(spacing: 8) {
-                        ZIcon("touchid", size: 16)
-                        Text(L10n.t("lock.enroll"))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .fontWeight(.medium)
-                }
-                .buttonStyle(.zen(.ink, height: 40, radius: 12, fontSize: 12))
-                .disabled(isBusy || !TouchIDKeychain.anyAuthAvailable)
-                .padding(.top, 4)
-            }
-            .padding(14)
-            .background(Zen.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Zen.indigo.opacity(0.25), lineWidth: 1))
+                Text(L10n.t("lock.passphraseLabel"))
+                    .font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
+                passwordField(
+                    text: $passphrase,
+                    placeholder: L10n.t("lock.passphrasePlaceholder"),
+                    revealed: $showPassphrase,
+                    onSubmit: submitPasswordUnlock
+                )
 
-            AuthOrDivider(text: L10n.t("lock.orSetPassphrase"))
-
-            VStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    SettingsTextField(placeholder: L10n.t("lock.shortPassphrasePlaceholder"), text: $passphraseInput, secure: !showPassphrase,
-                                      height: 36, radius: 12, background: Zen.raised)
-                    SettingsTextField(placeholder: L10n.t("lock.confirmShortPlaceholder"), text: $confirmPassphraseInput, secure: !showPassphrase,
-                                      height: 36, radius: 12, background: Zen.raised, onSubmit: enrollPassphraseOnly)
-                }
-                Button(action: enrollPassphraseOnly) {
-                    Text(L10n.t("lock.savePassphraseSignIn")).frame(maxWidth: .infinity)
-                    .fontWeight(.medium)
-                }
-                .buttonStyle(.zen(.raised, height: 36, radius: 12, fontSize: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Zen.line, lineWidth: 1))
-                .disabled(isBusy || passphraseInput.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-    }
-
-    // MARK: Actions
-
-    private func appear() {
-        auth.refresh(store: store)
-        if displayName.isEmpty { displayName = ownerName }
-        if let message { errorMsg = message }
-        passphraseFocused = !auth.hasMacCredential
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["KOBAN_SNAPSHOT"] != nil { return }
-        #endif
-        // Auto-prompt Touch ID on launch (autoPromptPasskeyOnLaunch).
-        if hasCredentialsConfigured, config.autoPromptPasskeyOnLaunch, auth.hasMacCredential, !autoPromptTriggered {
-            autoPromptTriggered = true
-            Task { await signInWithTouchID() }
-        }
-    }
-
-    private func signInWithTouchID() async {
-        errorMsg = nil
-        statusMsg = "Waiting for Touch ID verification…"
-        isBusy = true
-        defer { isBusy = false }
-        do {
-            let stored = try await TouchIDKeychain.authenticate(account: auth.account, displayName: ownerName)
-            let secret = auth.resolveSecret(keychainSecret: stored)
-            statusMsg = "Verified via Touch ID."
-            if vaultLocked {
-                guard let secret, !secret.isEmpty else {
-                    statusMsg = nil
-                    errorMsg = "Touch ID has no vault passphrase stored for this vault yet. Enter the passphrase once — Touch ID will use it from then on."
-                    return
-                }
-                store.unlock(passphrase: secret)
-                if store.phase == .ready {
-                    TouchIDKeychain.updateSecret(secret, account: auth.account)
-                    store.completeSignIn(updatedConfig: auth.configMarkingUsed())
+                if requiresKeyFile || showKeyFileBox {
+                    KeyFileSelectorView(
+                        keyfileURL: $keyfileURL,
+                        allowGenerate: false,
+                        rememberBinding: $rememberKeyfile,
+                        requiredBadge: requiresKeyFile,
+                        compact: true
+                    )
                 } else {
-                    statusMsg = nil
-                    errorMsg = "The passphrase stored for Touch ID no longer opens this vault. Enter the current vault passphrase."
+                    Button { showKeyFileBox = true } label: {
+                        HStack(spacing: 5) {
+                            ZIcon("key.viewfinder", size: 12)
+                            Text("Use Key File (.key)")
+                        }
+                        .font(.zen(11, .medium)).foregroundStyle(Zen.indigo)
+                    }
+                    .buttonStyle(.plain)
                 }
-            } else {
-                store.completeSignIn(updatedConfig: auth.configMarkingUsed())
+
+                Button(action: submitPasswordUnlock) {
+                    Text(L10n.t("lock.unlockPassphrase")).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.zen(touchIDEnrolled ? .outline : .ink, height: 38, radius: 10))
+                .disabled(busy)
             }
-        } catch {
-            statusMsg = nil
-            errorMsg = error.localizedDescription
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("160-bit Recovery Key (Crockford Base32)")
+                    .font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
+                TextField("", text: $recoveryInput, prompt: Text("XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX").foregroundStyle(Zen.ink3))
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Zen.ink)
+                    .padding(.horizontal, 10)
+                    .frame(height: 36)
+                    .background(Zen.app, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
+                    .onSubmit(submitRecoveryUnlock)
+
+                Button(action: submitRecoveryUnlock) {
+                    Text("Unlock with Recovery Key").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.zen(.ink, height: 38, radius: 10))
+                .disabled(busy)
+            }
         }
     }
 
-    private func signInWithPassphrase() {
-        let trimmed = passphraseInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            errorMsg = "Please enter your Master Passphrase or PIN."
-            return
-        }
-        errorMsg = nil
-        if vaultLocked {
-            let raw = passphraseInput
-            store.unlock(passphrase: trimmed)
-            if store.phase != .ready, raw != trimmed { store.unlock(passphrase: raw) }
-            if store.phase == .ready {
-                // Keep the Touch ID secret in sync with the passphrase that just worked (also gives
-                // vaults enrolled during onboarding, which store no secret, their Touch ID unlock).
-                if auth.hasMacCredential { TouchIDKeychain.updateSecret(store.vault?.passphrase, account: auth.account) }
-                passphraseInput = ""
-                store.completeSignIn()
-            } else if case .locked(let msg) = store.phase {
-                errorMsg = msg ?? "Wrong passphrase. Please try again."
+    // MARK: - Legacy v1 -> v2 Migration
+
+    @ViewBuilder
+    private var migrationBody: some View {
+        if !v1Unlocked {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Enter your legacy v1 vault passphrase to inspect and upgrade this database to Vault Format v2.")
+                    .font(.zen(12)).foregroundStyle(Zen.ink2).fixedSize(horizontal: false, vertical: true)
+                SecureField("", text: $v1Passphrase, prompt: Text("Legacy v1 passphrase").foregroundStyle(Zen.ink3))
+                    .textFieldStyle(.plain)
+                    .font(.zen(12)).foregroundStyle(Zen.ink)
+                    .padding(.horizontal, 10).frame(height: 36)
+                    .background(Zen.app, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
+                    .onSubmit(verifyLegacyV1)
+                Button(action: verifyLegacyV1) {
+                    Text("Verify Legacy Vault").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.zen(.ink, height: 38, radius: 10))
+                .disabled(busy)
             }
-            return
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("\(v1OwnerName.map { "Upgrading vault for \($0). " } ?? "")Upgrades your database from v1 to Argon2id key derivation, composite Key File support, 160-bit recovery key, and strict sync protection.")
+                    .font(.zen(11)).foregroundStyle(Zen.ink2).fixedSize(horizontal: false, vertical: true)
+
+                let minLen = migrationKeyfileURL != nil ? VaultCrypto.minCompositePassphraseLength : VaultCrypto.minPassphraseLength
+                Text("New Master Password (min \(minLen) chars)")
+                    .font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
+                passwordField(text: $newPassphrase, placeholder: "Choose Master Password", revealed: $showPassphrase, onSubmit: {})
+                PassphraseStrengthBarView(passphrase: newPassphrase, minimumLength: minLen) { generated in
+                    newPassphrase = generated
+                    confirmNewPassphrase = generated
+                    showPassphrase = true
+                }
+
+                Text("Confirm Master Password").font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
+                passwordField(text: $confirmNewPassphrase, placeholder: "Repeat Master Password", revealed: $showPassphrase, onSubmit: submitMigration)
+
+                KeyFileSelectorView(
+                    keyfileURL: $migrationKeyfileURL,
+                    allowGenerate: true,
+                    rememberBinding: $rememberMigrationKeyfile,
+                    onStatus: { statusNote = $0 }
+                )
+
+                Toggle("Generate a 160-bit emergency Recovery Key (recommended)", isOn: $createRecoveryKey)
+                    .toggleStyle(.checkbox)
+                    .font(.zen(12))
+                    .foregroundStyle(Zen.ink2)
+
+                Button(action: submitMigration) {
+                    Text("Upgrade & Encrypt Vault (v2)").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.zen(.ink, height: 38, radius: 10))
+                .disabled(busy)
+            }
         }
-        guard AuthRules.acceptsAppPassphrase(trimmed, config: config, vaultPassphrase: store.vault?.passphrase) else {
-            errorMsg = "Incorrect Master Passphrase or PIN. Please try again."
-            return
-        }
-        passphraseInput = ""
-        store.completeSignIn()
     }
 
-    private func enrollTouchIDFirstTime() async {
+    // MARK: - Actions
+
+    private func autoTriggerTouchIDIfReady() {
+        guard !needsMigration,
+              touchIDEnrolled,
+              vaultStatus?.authSettings.autoPromptDevice == true,
+              !didAutoTouchID else { return }
+        didAutoTouchID = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            triggerTouchID()
+        }
+    }
+
+    private func triggerTouchID() {
         errorMsg = nil
-        statusMsg = "Opening Touch ID registration prompt…"
-        isBusy = true
-        defer { isBusy = false }
-        let cleanName = displayName.trimmingCharacters(in: .whitespaces).isEmpty ? "Koban Owner"
-            : displayName.trimmingCharacters(in: .whitespaces)
-        let typed = passphraseInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        busy = true
+        Task { @MainActor in
+            defer { busy = false }
+            do {
+                try await store.unlockWithTouchID()
+            } catch {
+                errorMsg = DataIOMessages.text(error)
+            }
+        }
+    }
+
+    private func submitPasswordUnlock() {
+        errorMsg = nil
+        guard !passphrase.isEmpty else {
+            errorMsg = "Please enter your Master Password."
+            return
+        }
+        if requiresKeyFile && keyfileURL == nil {
+            showKeyFileBox = true
+            errorMsg = "Please select your Key File (.key) in addition to your Master Password."
+            return
+        }
+        busy = true
+        defer { busy = false }
         do {
-            let record = try await TouchIDKeychain.enroll(account: auth.account, label: TouchIDKeychain.methodName,
-                                                          vaultSecret: store.vault?.passphrase, displayName: cleanName)
-            var next = config
-            next.passkeys.append(record)
-            next.enabled = true
-            next.userDisplayName = cleanName
-            if !typed.isEmpty { next = next.withMasterPassphrase(typed) }
-            store.completeSignIn(updatedConfig: next)
+            try store.unlockWithCredentials(
+                passphrase: passphrase,
+                keyfileURL: keyfileURL,
+                rememberKeyfile: keyfileURL != nil && rememberKeyfile
+            )
+            passphrase = ""
         } catch {
-            statusMsg = nil
-            errorMsg = error.localizedDescription
+            errorMsg = DataIOMessages.text(error)
         }
     }
 
-    private func enrollPassphraseOnly() {
-        let p1 = passphraseInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        let p2 = confirmPassphraseInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard p1.count >= 4 else {
-            errorMsg = L10n.t("settings.login.errPassphraseShort")
-            return
-        }
-        guard p1 == p2 else {
-            errorMsg = L10n.t("onboarding.s4.errMismatch")
-            return
-        }
+    private func submitRecoveryUnlock() {
         errorMsg = nil
-        let cleanName = displayName.trimmingCharacters(in: .whitespaces).isEmpty ? "Koban Owner"
-            : displayName.trimmingCharacters(in: .whitespaces)
-        var next = config.withMasterPassphrase(p1)
-        next.userDisplayName = cleanName
-        passphraseInput = ""
-        confirmPassphraseInput = ""
-        store.completeSignIn(updatedConfig: next)
-    }
-}
-
-/// radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0) / 28px grid.
-private struct DotGrid: View {
-    var body: some View {
-        Canvas { ctx, size in
-            let step: CGFloat = 28
-            var y: CGFloat = 0
-            while y < size.height {
-                var x: CGFloat = 0
-                while x < size.width {
-                    ctx.fill(Path(ellipseIn: CGRect(x: x, y: y, width: 2, height: 2)), with: .color(Zen.ink))
-                    x += step
-                }
-                y += step
-            }
+        let clean = recoveryInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else {
+            errorMsg = "Please enter your 160-bit Recovery Key."
+            return
         }
+        busy = true
+        defer { busy = false }
+        do {
+            try store.unlockWithRecovery(clean)
+            recoveryInput = ""
+        } catch {
+            errorMsg = DataIOMessages.text(error)
+        }
+    }
+
+    private func verifyLegacyV1() {
+        errorMsg = nil
+        busy = true
+        defer { busy = false }
+        do {
+            let preview = try store.unlockV1ForMigration(passphrase: v1Passphrase.isEmpty ? nil : v1Passphrase)
+            v1OwnerName = preview.state.settings.ownerDisplayName
+            v1Unlocked = true
+        } catch {
+            errorMsg = DataIOMessages.text(error)
+        }
+    }
+
+    private func submitMigration() {
+        errorMsg = nil
+        let minLen = migrationKeyfileURL != nil ? VaultCrypto.minCompositePassphraseLength : VaultCrypto.minPassphraseLength
+        guard newPassphrase.count >= minLen else {
+            errorMsg = "Master Password must be at least \(minLen) characters."
+            return
+        }
+        guard newPassphrase.trimmingCharacters(in: .whitespacesAndNewlines) == newPassphrase else {
+            errorMsg = "Master Password cannot start or end with spaces."
+            return
+        }
+        guard newPassphrase == confirmNewPassphrase else {
+            errorMsg = "Passphrases do not match."
+            return
+        }
+        busy = true
+        defer { busy = false }
+        do {
+            try store.migrateV1ToV2(
+                v1Passphrase: hasLegacyCustom ? v1Passphrase : nil,
+                newPassphrase: newPassphrase,
+                keyfileURL: migrationKeyfileURL,
+                rememberKeyfile: rememberMigrationKeyfile,
+                createRecoveryKey: createRecoveryKey
+            )
+        } catch {
+            errorMsg = DataIOMessages.text(error)
+        }
+    }
+
+    // MARK: - Subviews
+
+    private func tabPill(_ title: String, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                ZIcon(icon, size: 12)
+                Text(title).font(.zen(12, .medium))
+            }
+            .foregroundStyle(selected ? Zen.ink : Zen.ink3)
+            .frame(maxWidth: .infinity)
+            .frame(height: 28)
+            .background(selected ? Zen.surface : .clear, in: RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func passwordField(text: Binding<String>, placeholder: String, revealed: Binding<Bool>, onSubmit: @escaping () -> Void) -> some View {
+        HStack(spacing: 8) {
+            Group {
+                if revealed.wrappedValue {
+                    TextField("", text: text, prompt: Text(placeholder).foregroundStyle(Zen.ink3))
+                } else {
+                    SecureField("", text: text, prompt: Text(placeholder).foregroundStyle(Zen.ink3))
+                }
+            }
+            .textFieldStyle(.plain)
+            .font(.zen(12)).foregroundStyle(Zen.ink)
+            .onSubmit(onSubmit)
+
+            Button { revealed.wrappedValue.toggle() } label: {
+                ZIcon(revealed.wrappedValue ? "eye.slash" : "eye", size: 13).foregroundStyle(Zen.ink3)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 36)
+        .background(Zen.app, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
+    }
+
+    private func callOut(text: String, isError: Bool) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            ZIcon(isError ? "exclamationmark.triangle" : "checkmark.circle", size: 14)
+                .foregroundStyle(isError ? Zen.accent : Zen.positive)
+                .padding(.top, 1)
+            Text(text)
+                .font(.zen(12))
+                .foregroundStyle(isError ? Zen.accent : Zen.positive)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background((isError ? Zen.accent : Zen.positive).opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder((isError ? Zen.accent : Zen.positive).opacity(0.25), lineWidth: 1))
     }
 }

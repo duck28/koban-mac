@@ -650,12 +650,11 @@ struct SetupStepVault: View {
     @Bindable var model: SetupWizardModel
 
     var body: some View {
-        let passkeyCount = model.auth.passkeys.count
         VStack(alignment: .leading, spacing: 16) {
             StepHeading(title: L10n.t("onboarding.s4.heading"),
                         subtitle: L10n.t("onboarding.s4.desc"))
 
-            // 1. Encrypted Vault, Custom Passphrase & Backup Path
+            // 1. Vault Format v2 Encryption, Composite Key File & Recovery Key
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     HStack(spacing: 8) {
@@ -683,7 +682,7 @@ struct SetupStepVault: View {
                     passphraseField(
                         text: $model.vaultPassphrase,
                         placeholder: model.requiresCustomPassphrase
-                            ? L10n.t("onboarding.s4.passphrasePlaceholderReq")
+                            ? "Master Password (min \(model.minPassphraseLen) chars)"
                             : L10n.t("onboarding.s4.passphrasePlaceholderOpt")
                     )
                     passphraseField(
@@ -694,12 +693,32 @@ struct SetupStepVault: View {
                     )
                 }
 
+                if model.requiresCustomPassphrase || !model.vaultPassphrase.isEmpty {
+                    PassphraseStrengthBarView(passphrase: model.vaultPassphrase, minimumLength: model.minPassphraseLen) { g in
+                        model.vaultPassphrase = g
+                        model.vaultPassphraseConfirm = g
+                    }
+                }
+
                 if let err = model.passphraseError,
-                   !model.trimmedPassphrase.isEmpty || !model.trimmedPassphraseConfirm.isEmpty || model.requiresCustomPassphrase {
-                    let bothEmpty = model.trimmedPassphrase.isEmpty && model.trimmedPassphraseConfirm.isEmpty
+                   !model.vaultPassphrase.isEmpty || !model.vaultPassphraseConfirm.isEmpty || model.requiresCustomPassphrase {
+                    let bothEmpty = model.vaultPassphrase.isEmpty && model.vaultPassphraseConfirm.isEmpty
                     Text(err)
                         .font(.zen(11))
                         .foregroundStyle(bothEmpty ? Zen.ink2 : Zen.accent)
+                }
+
+                if !model.alreadyConfiguredV2 {
+                    KeyFileSelectorView(
+                        keyfileURL: $model.keyfileURL,
+                        allowGenerate: true,
+                        rememberBinding: $model.rememberKeyfile,
+                        onStatus: { model.keyfileStatusMsg = $0 }
+                    )
+                    if let msg = model.keyfileStatusMsg {
+                        Text(msg).font(.zen(11)).foregroundStyle(Zen.positive)
+                    }
+                    OnbCheckbox(isOn: $model.createRecoveryKey, label: "Generate 160-bit emergency Recovery Key (recommended)")
                 }
 
                 HStack(alignment: .top, spacing: 10) {
@@ -729,52 +748,32 @@ struct SetupStepVault: View {
             }
             .onbBox()
 
-            // 2. Login & Passkey / Touch ID Protection
+            // 2. Quick Unlock & Lock Policy
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        ZIcon("touchid", size: 16).foregroundStyle(Zen.indigo)
-                        Text(L10n.t("onboarding.s4.loginTitle")).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
-                        if passkeyCount > 0 {
-                            HStack(spacing: 4) {
-                                ZIcon("checkmark.circle", size: 12, weight: .regular)
-                                Text("\(passkeyCount) \(L10n.t("onboarding.s4.passkeyEnrolled"))")
-                            }
-                            .font(.zen(10, .medium)).foregroundStyle(Zen.positive)
-                            .padding(.horizontal, 8).padding(.vertical, 2)
-                            .background(Zen.positive.opacity(0.12), in: Capsule())
-                            .overlay(Capsule().strokeBorder(Zen.positive.opacity(0.3), lineWidth: 1))
-                        }
-                    }
-                    Spacer(minLength: 8)
-                    OnbCheckbox(isOn: $model.requireLoginOnStartup, label: L10n.t("onboarding.s4.requireLoginStartup"))
+                    ZIcon("touchid", size: 16).foregroundStyle(Zen.indigo)
+                    Text("Quick Unlock & Lock Policy").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
                 }
 
-                HStack(alignment: .bottom, spacing: 10) {
+                HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 0) {
                         FieldLabel(L10n.t("onboarding.s4.ownerNameLabel"))
                         OnbTextField(text: $model.userDisplayName, placeholder: "Koban Owner")
                     }
                     .frame(maxWidth: .infinity)
-                    Button { model.handleEnrollPasskey(store: store) } label: {
-                        HStack(spacing: 8) {
-                            ZIcon("touchid", size: 14)
-                            Text(passkeyCount > 0 ? L10n.t("onboarding.s4.addAnotherPasskeyBtn") : L10n.t("onboarding.s4.enrollBtn"))
-                                .fontWeight(.medium)
-                        }
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        FieldLabel("Auto-lock after inactivity")
+                        OnbSelect(options: [(1, "1 min"), (5, "5 min"), (15, "15 min"), (30, "30 min"), (60, "60 min"), (0, "Never")],
+                                  selection: $model.autoLockMinutes, height: 36, horizontalPadding: 10)
                     }
-                    .buttonStyle(.zen(.ink, height: 36, radius: 8, padding: 16, fontSize: 12))
-                    .disabled(model.isEnrollingPasskey || !model.isPassphraseValid)
                 }
 
-                if !model.isPassphraseValid {
-                    Text(L10n.t("onboarding.s4.passkeyGateHint"))
-                        .font(.zen(11)).foregroundStyle(Zen.ink3)
+                if TouchIDKeychain.anyAuthAvailable && !model.alreadyConfiguredV2 {
+                    OnbCheckbox(isOn: $model.enrollTouchID,
+                                label: "Enable \(TouchIDKeychain.methodName) Quick Unlock (protected in macOS Keychain)")
                 }
-
-                if let msg = model.passkeyStatusMsg {
-                    Text(msg).font(.zen(11)).foregroundStyle(Zen.indigo)
-                }
+                OnbCheckbox(isOn: $model.lockOnMinimize, label: "Lock vault automatically when minimized")
             }
             .onbBox()
 

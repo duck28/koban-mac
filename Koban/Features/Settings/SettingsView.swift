@@ -7,10 +7,18 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(LedgerStore.self) private var store
 
-    @State private var newCredentialLabel = "Touch ID (This Mac)"
+    @State private var currentPassphrase = ""
+    @State private var currentKeyfileURL: URL?
     @State private var newPassphrase = ""
+    @State private var confirmNewPassphrase = ""
+    @State private var newKeyfileURL: URL?
+    @State private var rememberNewKeyfile = false
+    @State private var rekeyDEK = false
     @State private var authStatusMsg: String?
-    @State private var isRegisteringPasskey = false
+    @State private var authErrorMsg: String?
+    @State private var isBusyAuth = false
+    @State private var legacyV1Passphrase = ""
+    @State private var legacyBackups: [BackupEntry] = []
 
     private var auth: AuthCenter { AuthCenter.shared }
     private var settings: AppSettings { store.state.settings }
@@ -41,7 +49,11 @@ struct SettingsView: View {
                 proxy.scrollTo(String(name.dropFirst("settings-scroll-".count)), anchor: .top)
             }
         }
-        .onAppear { auth.refresh(store: store) }
+        .onAppear {
+            auth.refresh(store: store)
+            if currentKeyfileURL == nil { currentKeyfileURL = auth.rememberedKeyfileURL }
+            refreshLegacyBackups()
+        }
     }
 
     // MARK: - Bindings
@@ -56,12 +68,12 @@ struct SettingsView: View {
                 set: { v in store.applySettingsChange { $0[keyPath: keyPath] = v } })
     }
 
-    private func authBinding<T>(_ keyPath: WritableKeyPath<AuthConfig, T>) -> Binding<T> {
-        Binding(get: { auth.config[keyPath: keyPath] },
+    private func authSetting<T>(_ keyPath: WritableKeyPath<VaultAuthSettings, T>) -> Binding<T> {
+        Binding(get: { auth.authSettings[keyPath: keyPath] },
                 set: { v in
-                    var next = auth.config
+                    var next = auth.authSettings
                     next[keyPath: keyPath] = v
-                    store.updateAuthConfig(next)
+                    store.updateAuthSettings(next)
                 })
     }
 
@@ -117,41 +129,39 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Login & Touch ID
+    // MARK: - Vault Format v2 Security & Credentials
 
     private var loginSection: some View {
-        let config = auth.config
+        let status = auth.vaultStatus
         return SettingsSection(
-            icon: "touchid", tint: Zen.indigo, title: L10n.t("settings.login.title"),
-            subtitle: L10n.t("settings.login.descMac")
+            icon: "checkmark.shield", tint: Zen.positive, title: "Vault Security & Encryption (Format v2)",
+            subtitle: "Argon2id (64 MiB · 3 iterations · 4 lanes) + 256-bit AES-GCM-256 with authenticated AAD & key slots"
         ) {
             HStack(spacing: 4) {
                 ZIcon("checkmark.circle", size: 12)
-                Text(config.enabled ? L10n.t("settings.login.enabled") : L10n.t("settings.login.disabled"))
-                    .font(.zen(11, .medium))
+                Text("Encrypted v2").font(.zen(11, .medium))
             }
-            .foregroundStyle(config.enabled ? Zen.positive : Zen.ink3)
+            .foregroundStyle(Zen.positive)
             .padding(.horizontal, 10).padding(.vertical, 2)
-            .background(config.enabled ? Zen.positive.opacity(0.12) : Zen.raised, in: Capsule())
-            .overlay(Capsule().strokeBorder(config.enabled ? Zen.positive.opacity(0.3) : Zen.line, lineWidth: 1))
+            .background(Zen.positive.opacity(0.12), in: Capsule())
+            .overlay(Capsule().strokeBorder(Zen.positive.opacity(0.3), lineWidth: 1))
         } content: {
-            if let authStatusMsg {
+            if let authErrorMsg {
+                SettingsCallout(text: authErrorMsg)
+            } else if let authStatusMsg {
                 SettingsCallout(text: authStatusMsg)
-            }
-
-            SettingsEqualColumns {
-                SettingsToggleRow(title: L10n.t("settings.login.require"),
-                                  detail: L10n.t("settings.login.requireDesc"),
-                                  isOn: authBinding(\.enabled))
-                SettingsToggleRow(title: L10n.t("settings.login.autoPrompt"),
-                                  detail: L10n.t("settings.login.autoPromptDesc"),
-                                  isOn: authBinding(\.autoPromptPasskeyOnLaunch))
             }
 
             SettingsEqualColumns {
                 VStack(alignment: .leading, spacing: 4) {
                     SettingsFieldLabel(L10n.t("settings.login.ownerName"), weight: .medium)
-                    SettingsTextField(placeholder: L10n.t("settings.login.ownerPlaceholder"), text: authBinding(\.userDisplayName))
+                    SettingsTextField(
+                        placeholder: L10n.t("settings.login.ownerPlaceholder"),
+                        text: Binding(
+                            get: { settings.ownerDisplayName ?? "Koban Owner" },
+                            set: { v in store.applySettingsChange { $0.ownerDisplayName = v } }
+                        )
+                    )
                 }
                 .padding(12)
                 .background(Zen.app, in: RoundedRectangle(cornerRadius: 8))
@@ -160,114 +170,197 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     SettingsFieldLabel(L10n.t("settings.login.autoLock"), weight: .medium)
                     SettingsMenuField(options: [(0, L10n.t("settings.login.autoLockNever")),
+                                                (1, "1 minute"),
                                                 (5, L10n.t("settings.login.autoLock5")),
                                                 (15, L10n.t("settings.login.autoLock15")),
                                                 (30, L10n.t("settings.login.autoLock30")),
                                                 (60, L10n.t("settings.login.autoLock60"))],
-                                      selection: authBinding(\.autoLockMinutes), background: Zen.surface)
+                                      selection: authSetting(\.autoLockMinutes), background: Zen.surface)
                 }
                 .padding(12)
                 .background(Zen.app, in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
             }
 
-            credentialsBox(config)
-            masterPassphraseForm(config)
+            SettingsEqualColumns {
+                SettingsToggleRow(
+                    title: "Lock vault when minimized or hidden",
+                    detail: "Clears in-memory encryption key whenever Koban is minimized or hidden",
+                    isOn: authSetting(\.lockOnMinimize)
+                )
+                SettingsToggleRow(
+                    title: L10n.t("settings.login.autoPrompt"),
+                    detail: L10n.t("settings.login.autoPromptDesc"),
+                    isOn: authSetting(\.autoPromptDevice)
+                )
+            }
+
+            activeSlotsBox(status)
+            quickActionsBox(status)
+            changeCredentialsForm(status)
+            legacyBackupsBox
         }
     }
 
-    private func credentialsBox(_ config: AuthConfig) -> some View {
-        let count = config.passkeys.count
-        return VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(L10n.tf("settings.login.enrolledTitleMac", ["count": count])).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
-                Text(L10n.t("settings.login.enrolledDescMac"))
-                    .font(.zen(11)).foregroundStyle(Zen.ink2).fixedSize(horizontal: false, vertical: true)
-            }
-
-            if count > 0 {
+    @ViewBuilder
+    private func activeSlotsBox(_ status: VaultStatus?) -> some View {
+        if let slots = status?.slots, !slots.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Active Vault Key Slots").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                    Spacer()
+                    if let vid = status?.vaultID, AuthCenter.shared.rememberedKeyfileURL != nil {
+                        Button("Forget remembered Key File path") {
+                            TouchIDKeychain.rememberKeyfileURL(nil, vaultID: vid)
+                            currentKeyfileURL = nil
+                            authStatusMsg = "Cleared remembered Key File path on this Mac."
+                        }
+                        .font(.zen(11)).foregroundStyle(Zen.indigo)
+                        .buttonStyle(.plain)
+                    }
+                }
                 VStack(spacing: 6) {
-                    ForEach(config.passkeys) { pk in
-                        credentialRow(name: pk.name,
-                                      detail: "\(pk.isWindowsHelloNative ? L10n.t("settings.login.nativeVerifierMac") : L10n.t("settings.login.webauthnVerifierMac")) • \(L10n.t("settings.login.addedPrefix")) \(Self.date(pk.createdAt))",
-                                      icon: pk.isWindowsHelloNative ? "laptopcomputer" : "key.horizontal") {
-                            var next = auth.config
-                            next.passkeys.removeAll { $0.id == pk.id }
-                            store.updateAuthConfig(next)
-                            if !auth.hasMacCredential { TouchIDKeychain.removeSecret(account: auth.account) }
-                            authStatusMsg = L10n.t("settings.login.removedPasskey")
+                    ForEach(slots) { slot in
+                        HStack(spacing: 8) {
+                            ZIcon(slot.kind == "recovery" ? "key" : slot.kind == "composite_keyfile" ? "key.viewfinder" : "lock", size: 13)
+                                .foregroundStyle(slot.kind == "recovery" ? Zen.warning : slot.kind == "composite_keyfile" ? Zen.indigo : Zen.positive)
+                            Text(slot.label).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                            if let fp = slot.keyfileFingerprint {
+                                Text("sha256:\(fp)")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(Zen.ink2)
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(Zen.raised, in: RoundedRectangle(cornerRadius: 4))
+                            }
+                            Spacer()
+                            Text(slot.createdAt > 0 ? Self.date(Double(slot.createdAt)) : "Active")
+                                .font(.zen(10)).foregroundStyle(Zen.ink3)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .background(Zen.surface, in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
+                    }
+                }
+            }
+            .padding(14)
+            .background(Zen.app, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Zen.line, lineWidth: 1))
+        }
+    }
+
+    private func quickActionsBox(_ status: VaultStatus?) -> some View {
+        SettingsEqualColumns {
+            HStack(spacing: 10) {
+                ZIcon("touchid", size: 16).foregroundStyle(Zen.indigo)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(TouchIDKeychain.methodName) Quick Unlock").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                    Text(status?.deviceSlotEnrolled == true
+                         ? "DEK protected in Keychain for quick unlock"
+                         : TouchIDKeychain.anyAuthAvailable ? "Not enrolled on this Mac yet" : "Biometrics/login auth unavailable")
+                        .font(.zen(11)).foregroundStyle(Zen.ink2)
+                }
+                Spacer()
+                Button(status?.deviceSlotEnrolled == true ? L10n.t("common.remove") : "Enable") {
+                    authErrorMsg = nil; authStatusMsg = nil
+                    if status?.deviceSlotEnrolled == true {
+                        store.removeTouchID()
+                        authStatusMsg = "Removed Quick Unlock from this Mac."
+                    } else {
+                        isBusyAuth = true
+                        Task { @MainActor in
+                            defer { isBusyAuth = false }
+                            do {
+                                try await store.enrollTouchID()
+                                authStatusMsg = "Enabled \(TouchIDKeychain.methodName) Quick Unlock."
+                            } catch {
+                                authErrorMsg = DataIOMessages.text(error)
+                            }
                         }
                     }
                 }
-            } else {
-                Text(L10n.t("settings.login.noneEnrolledMac"))
-                    .font(.zen(12)).foregroundStyle(Zen.ink3).padding(.vertical, 4)
+                .buttonStyle(.zen(.outline, height: 30, radius: 8, padding: 12))
+                .disabled(isBusyAuth || (!TouchIDKeychain.anyAuthAvailable && status?.deviceSlotEnrolled != true))
             }
+            .padding(12)
+            .background(Zen.app, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Zen.line, lineWidth: 1))
 
-            HStack(alignment: .bottom, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    SettingsFieldLabel(L10n.t("settings.login.credLabel"), size: 10, color: Zen.ink3)
-                    SettingsTextField(placeholder: L10n.t("settings.login.credPlaceholderMac"), text: $newCredentialLabel)
-                }
-                .frame(minWidth: 160, maxWidth: .infinity)
-
-                Button { Task { await registerTouchID() } } label: {
-                    HStack(spacing: 6) {
-                        ZIcon("plus", size: 14)
-                        Text(L10n.t("settings.login.enrollBtn")).fontWeight(.medium)
-                    }
-                }
-                .buttonStyle(.zen(.ink, height: 32, radius: 8, padding: 14))
-                .disabled(isRegisteringPasskey || !TouchIDKeychain.anyAuthAvailable)
-                .help(TouchIDKeychain.anyAuthAvailable ? L10n.t("settings.login.enrollTouchIdHelp")
-                                                       : L10n.t("settings.login.touchIdUnavailableHelp"))
-            }
-            .padding(.top, 4)
-        }
-        .padding(14)
-        .background(Zen.app, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Zen.line, lineWidth: 1))
-    }
-
-    private func credentialRow(name: String, detail: String, icon: String, onRemove: @escaping () -> Void) -> some View {
-        HStack(spacing: 8) {
             HStack(spacing: 10) {
-                ZIcon(icon, size: 14).foregroundStyle(Zen.indigo)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(name).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
-                    Text(detail).font(.zen(10)).foregroundStyle(Zen.ink3)
+                ZIcon("key.fill", size: 16).foregroundStyle(Zen.warning)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Emergency Recovery Key").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                    Text(status?.slots.contains(where: { $0.kind == "recovery" }) == true
+                         ? "Active (generating replaces previous key)"
+                         : "No Recovery Key configured yet")
+                        .font(.zen(11)).foregroundStyle(Zen.ink2)
                 }
+                Spacer()
+                Button("Generate New") {
+                    authErrorMsg = nil
+                    do { try store.generateNewRecoveryKey() } catch { authErrorMsg = DataIOMessages.text(error) }
+                }
+                .buttonStyle(.zen(.outline, height: 30, radius: 8, padding: 12))
+                .disabled(isBusyAuth)
             }
-            Spacer(minLength: 8)
-            SettingsDangerButton(title: L10n.t("common.remove"), icon: "trash", action: onRemove)
+            .padding(12)
+            .background(Zen.app, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Zen.line, lineWidth: 1))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Zen.surface, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
     }
 
-    private func masterPassphraseForm(_ config: AuthConfig) -> some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                SettingsFieldLabel(config.hasMasterPassphrase ? L10n.t("settings.login.updatePassphraseLabel")
-                                                              : L10n.t("settings.login.setPassphraseLabel"), weight: .medium)
-                SettingsTextField(icon: "key", placeholder: L10n.t("settings.login.passphrasePlaceholder"), text: $newPassphrase,
-                                  secure: true, onSubmit: setMasterPassphrase)
-            }
-            .frame(minWidth: 180, maxWidth: .infinity)
+    private func changeCredentialsForm(_ status: VaultStatus?) -> some View {
+        let minLen = newKeyfileURL != nil ? VaultCrypto.minCompositePassphraseLength : VaultCrypto.minPassphraseLength
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("Change Master Password / Key File (.key)").font(.zen(12, .semibold)).foregroundStyle(Zen.ink)
 
-            Button(action: setMasterPassphrase) {
-                Text(config.hasMasterPassphrase ? L10n.t("settings.login.updatePassphraseBtn") : L10n.t("settings.login.savePassphraseBtn")).fontWeight(.medium)
-            }
-            .buttonStyle(.zen(.outline, height: 32, radius: 8, padding: 14))
-            .disabled(newPassphrase.trimmingCharacters(in: .whitespaces).isEmpty)
-
-            if config.hasMasterPassphrase {
-                SettingsDangerButton(title: L10n.t("settings.login.removePassphraseBtn"), height: 32, fontSize: 12) {
-                    store.updateAuthConfig(auth.config.withoutMasterPassphrase())
-                    authStatusMsg = L10n.t("settings.login.removedPassphraseMsg")
+            HStack(alignment: .bottom, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    SettingsFieldLabel("Current Password", weight: .medium)
+                    SettingsTextField(icon: "lock", placeholder: "Current password", text: $currentPassphrase, secure: true)
                 }
+                VStack(alignment: .leading, spacing: 4) {
+                    SettingsFieldLabel("New Password (min \(minLen))", weight: .medium)
+                    SettingsTextField(icon: "key", placeholder: "New Master Password", text: $newPassphrase, secure: true)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    SettingsFieldLabel("Confirm New Password", weight: .medium)
+                    SettingsTextField(icon: "key", placeholder: "Confirm password", text: $confirmNewPassphrase, secure: true, onSubmit: submitCredentialsChange)
+                }
+            }
+
+            if !newPassphrase.isEmpty {
+                PassphraseStrengthBarView(passphrase: newPassphrase, minimumLength: minLen) { generated in
+                    newPassphrase = generated
+                    confirmNewPassphrase = generated
+                }
+            }
+
+            if status?.requiresKeyFile == true {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Current Key File (required to verify current password)").font(.zen(11)).foregroundStyle(Zen.ink2)
+                    KeyFileSelectorView(keyfileURL: $currentKeyfileURL, allowGenerate: false, compact: true)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("New Key File (optional — leave empty to use Master Password alone)").font(.zen(11)).foregroundStyle(Zen.ink2)
+                KeyFileSelectorView(
+                    keyfileURL: $newKeyfileURL,
+                    allowGenerate: true,
+                    rememberBinding: $rememberNewKeyfile,
+                    compact: true,
+                    onStatus: { authStatusMsg = $0 }
+                )
+            }
+
+            HStack {
+                Toggle("Rotate 256-bit vault encryption key (re-keys ledger & all key slots)", isOn: $rekeyDEK)
+                    .toggleStyle(.checkbox)
+                    .font(.zen(11)).foregroundStyle(Zen.ink2)
+                Spacer()
+                Button("Save Master Credentials", action: submitCredentialsChange)
+                    .buttonStyle(.zen(.ink, height: 32, radius: 8, padding: 14))
+                    .disabled(isBusyAuth || newPassphrase.isEmpty)
             }
         }
         .padding(14)
@@ -275,34 +368,81 @@ struct SettingsView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Zen.line, lineWidth: 1))
     }
 
-    private func setMasterPassphrase() {
-        let trimmed = newPassphrase.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 4 else {
-            authStatusMsg = L10n.t("settings.login.errPassphraseShort")
+    @ViewBuilder
+    private var legacyBackupsBox: some View {
+        if !legacyBackups.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Legacy v1 Backups Detected (\(legacyBackups.count))")
+                    .font(.zen(12, .semibold)).foregroundStyle(Zen.ink)
+                Text("Older v1 backups exist next to your database or backup folder. Upgrade them to Vault v2 or delete them.")
+                    .font(.zen(11)).foregroundStyle(Zen.ink2)
+                SettingsTextField(icon: "lock", placeholder: "Legacy v1 passphrase (if needed)", text: $legacyV1Passphrase, secure: true)
+                ForEach(legacyBackups) { b in
+                    HStack(spacing: 8) {
+                        Text(b.name).font(.system(size: 11, design: .monospaced)).foregroundStyle(Zen.ink).lineLimit(1)
+                        Spacer()
+                        Button("Upgrade to v2") { upgradeLegacyBackup(b) }
+                            .buttonStyle(.zen(.ink, height: 26, radius: 6, padding: 10, fontSize: 11))
+                        SettingsDangerButton(title: "Delete", icon: "trash", height: 26, fontSize: 11) {
+                            try? DataIOStorage.deleteBackupFile(at: b.url, activeDatabase: store.databaseURL)
+                            refreshLegacyBackups()
+                        }
+                    }
+                    .padding(8)
+                    .background(Zen.surface, in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+            .padding(14)
+            .background(Zen.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Zen.warning.opacity(0.25), lineWidth: 1))
+        }
+    }
+
+    private func submitCredentialsChange() {
+        authErrorMsg = nil; authStatusMsg = nil
+        let minLen = newKeyfileURL != nil ? VaultCrypto.minCompositePassphraseLength : VaultCrypto.minPassphraseLength
+        guard newPassphrase.count >= minLen else {
+            authErrorMsg = "New Master Password must be at least \(minLen) characters."
             return
         }
-        store.updateAuthConfig(auth.config.withMasterPassphrase(trimmed))
-        newPassphrase = ""
-        authStatusMsg = L10n.t("settings.login.updatedPassphraseMsg")
+        guard newPassphrase.trimmingCharacters(in: .whitespacesAndNewlines) == newPassphrase else {
+            authErrorMsg = "Master Password cannot start or end with spaces."
+            return
+        }
+        guard newPassphrase == confirmNewPassphrase else {
+            authErrorMsg = "New passwords do not match."
+            return
+        }
+        isBusyAuth = true
+        defer { isBusyAuth = false }
+        do {
+            try store.changeVaultCredentials(
+                currentPassphrase: currentPassphrase.isEmpty ? nil : currentPassphrase,
+                currentKeyfileURL: currentKeyfileURL,
+                newPassphrase: newPassphrase,
+                newKeyfileURL: newKeyfileURL,
+                rememberNewKeyfile: rememberNewKeyfile,
+                rekeyDEK: rekeyDEK
+            )
+            currentPassphrase = ""; newPassphrase = ""; confirmNewPassphrase = ""; rekeyDEK = false
+            authStatusMsg = "Updated Vault Master Credentials."
+        } catch {
+            authErrorMsg = DataIOMessages.text(error)
+        }
     }
 
-    private func registerTouchID() async {
-        isRegisteringPasskey = true
-        authStatusMsg = nil
-        defer { isRegisteringPasskey = false }
-        let label = newCredentialLabel.trimmingCharacters(in: .whitespaces).isEmpty
-            ? "Touch ID (This Mac)" : newCredentialLabel.trimmingCharacters(in: .whitespaces)
+    private func refreshLegacyBackups() {
+        legacyBackups = DataIOStorage.listLegacyV1Backups(in: settings.localBackupDir, activeDatabase: store.databaseURL)
+    }
+
+    private func upgradeLegacyBackup(_ b: BackupEntry) {
+        authErrorMsg = nil
         do {
-            let record = try await TouchIDKeychain.enroll(
-                account: auth.account, label: label, vaultSecret: store.vault?.passphrase,
-                displayName: auth.config.userDisplayName.isEmpty ? "Koban Owner" : auth.config.userDisplayName)
-            var next = auth.config
-            next.enabled = true
-            next.passkeys.append(record)
-            store.updateAuthConfig(next)
-            authStatusMsg = L10n.tf("settings.login.enrollSuccess", ["name": record.name])
+            try store.vault?.upgradeLegacyV1Backup(at: b.url, v1Passphrase: legacyV1Passphrase.isEmpty ? nil : legacyV1Passphrase)
+            authStatusMsg = "Upgraded \(b.name) to Vault Format v2."
+            refreshLegacyBackups()
         } catch {
-            authStatusMsg = error.localizedDescription.isEmpty ? L10n.t("settings.login.enrollFailed") : error.localizedDescription
+            authErrorMsg = DataIOMessages.text(error)
         }
     }
 

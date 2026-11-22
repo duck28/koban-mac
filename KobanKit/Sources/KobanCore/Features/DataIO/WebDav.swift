@@ -454,12 +454,69 @@ enum WebDav {
                                        localSha256: sha256Hex(data)))
     }
 
-    /// Validates the SQLite header, writes a safety copy of the current file, replaces it, and (with a
-    /// download result) records the sync state next to it. Works when no local file exists yet.
-    static func installDownloadedDatabase(_ data: Data, at localDatabase: URL, result: WebDavSyncResult? = nil) throws {
+    /// Validates downloaded bytes before replacing local storage: checks SQLite header, rejects
+    /// embedded triggers/views, rejects future unknown format versions (> 2), and rejects unencrypted /
+    /// default-key legacy v1 databases.
+    static func validateDownloadedVault(_ data: Data) throws {
         guard data.count >= 16, data.prefix(16) == sqliteHeader else {
             throw WebDavError("Downloaded remote file is not a valid SQLite database.")
         }
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("koban-webdav-validate-\(UUID().uuidString).db")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        do {
+            try data.write(to: tempURL, options: .atomic)
+            let db = try SQLiteConnection(path: tempURL.path, readOnly: true)
+            let suspiciousCount = (try? db.scalarInt(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type IN ('trigger', 'view')"
+            )) ?? 0
+            guard suspiciousCount == 0 else {
+                throw WebDavError("Downloaded database contains disallowed SQLite triggers or views.")
+            }
+            let ver = try KobanVault.detectFormatVersion(at: tempURL)
+            if ver == 0 {
+                throw WebDavError("Downloaded database is missing recognizable encrypted Koban vault tables.")
+            }
+            if ver == 1 {
+                let hasCustom = (try? db.scalarString(
+                    "SELECT value FROM vault_meta WHERE key = 'custom_passphrase' LIMIT 1"
+                )) == "true"
+                if !hasCustom {
+                    throw WebDavError("Downloaded database uses an unencrypted legacy default key and cannot be opened safely.")
+                }
+            }
+        } catch let e as WebDavError {
+            throw e
+        } catch let e as VaultError {
+            throw WebDavError(e.description)
+        } catch {
+            throw WebDavError("Downloaded database failed integrity inspection: \(error.localizedDescription)")
+        }
+    }
+
+    /// Decrypts a remote WebDAV vault in a staging file using the current session DEK for deterministic merging.
+    static func fetchDecryptedForMerge(
+        url: String,
+        username: String,
+        password: String,
+        filename: String?,
+        sessionDEK: Data
+    ) async throws -> (state: LedgerState, result: WebDavSyncResult) {
+        let (data, result) = try await download(url: url, username: username, password: password, filename: filename)
+        try validateDownloadedVault(data)
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("koban-webdav-merge-\(UUID().uuidString).db")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        try data.write(to: tempURL, options: .atomic)
+        let tempVault = KobanVault(url: tempURL)
+        let state = try tempVault.unlockWithDEK(sessionDEK)
+        return (state, result)
+    }
+
+    /// Validates the SQLite header & vault format, writes a safety copy of the current file,
+    /// replaces it, and records the sync state next to it. Works when no local file exists yet.
+    static func installDownloadedDatabase(_ data: Data, at localDatabase: URL, result: WebDavSyncResult? = nil) throws {
+        try validateDownloadedVault(data)
         let fm = FileManager.default
         try? fm.createDirectory(at: localDatabase.deletingLastPathComponent(), withIntermediateDirectories: true)
         if fm.fileExists(atPath: localDatabase.path) {

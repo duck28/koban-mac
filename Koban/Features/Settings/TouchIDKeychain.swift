@@ -2,26 +2,20 @@ import Foundation
 import LocalAuthentication
 import Security
 
-/// macOS substitute for Windows Hello / WebAuthn passkeys (registerPasskeyOrWindowsHello /
-/// authenticateWithPasskeyOrWindowsHello in src/utils/auth.ts).
+/// Native macOS credential storage for Vault Format v2 and WebDAV.
 ///
-/// Enrollment is recorded exactly like the Onboarding port does it: a passkey record
-/// `{id, name, kind: "windows_hello_native", createdAt}` in the shared AuthConfig. A
-/// `windows_hello_native` record is a plain OS user-verification (no credential key), so on macOS it is
-/// verified with LocalAuthentication (Touch ID, or the Mac password without Touch ID) and on Windows with
-/// Windows Hello — the same record works on both. WebAuthn passkey records stay Windows-only.
-///
-/// To open a vault encrypted with a custom passphrase, the passphrase is kept in the Keychain
-/// (service `com.roland-matuz.koban.touchid`, account = the vault's salt). It is written with
-/// `.biometryCurrentSet` access control to the data-protection keychain when the build is entitled,
-/// otherwise to the login keychain with every read gated by an LAContext evaluation. It is stored on
-/// enrollment and refreshed after every successful passphrase unlock, so vaults enrolled during
-/// onboarding (no secret yet) pick it up the first time the passphrase is typed. A Windows record's
-/// `wrappedVaultSecret` (unwrap_vault_secret_for_credential) is used as a fallback.
+/// - Touch ID Quick Unlock stores the raw 32-byte Vault DEK (never the Master Password) in
+///   Keychain (`service = "com.roland-matuz.koban.vault"`, `account = "vault2:<vaultID>"`).
+///   When entitled (Developer ID + keychain-access-groups), it uses the Data Protection Keychain
+///   with `.biometryCurrentSet`; for ad-hoc signed builds it falls back to the login Keychain
+///   gated by an explicit `LAContext` evaluation.
+/// - WebDAV passwords are stored separately in Keychain (`service = "com.roland-matuz.koban.webdav"`)
+///   so `koban.db` synced via iCloud/Synology/WebDAV never carries plaintext WebDAV passwords.
 enum TouchIDKeychain {
-    static let service = "com.roland-matuz.koban.touchid"
-    /// PasskeyCredentialRecord.kind used for Touch ID enrollments (shared with Onboarding).
-    static let recordKind = "windows_hello_native"
+    static let vaultService = "com.roland-matuz.koban.vault"
+    static let legacyTouchIDService = "com.roland-matuz.koban.touchid"
+    static let webdavService = "com.roland-matuz.koban.webdav"
+    private static let keyfilePrefPrefix = "koban_v2_keyfile_"
 
     enum AuthError: LocalizedError {
         case unavailable(String)
@@ -30,14 +24,11 @@ enum TouchIDKeychain {
         var errorDescription: String? {
             switch self {
             case .unavailable(let m), .failed(let m): return m
-            case .notEnrolled: return "No Touch ID credential is registered for this vault."
+            case .notEnrolled: return "Touch ID Quick Unlock is not enrolled for this vault."
             }
         }
     }
 
-    // MARK: Availability
-
-    /// Touch ID when the Mac has it; otherwise the Mac login password (like Windows Hello's PIN fallback).
     static var biometryAvailable: Bool {
         LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
     }
@@ -48,16 +39,10 @@ enum TouchIDKeychain {
 
     static var methodName: String { biometryAvailable ? "Touch ID" : "Mac Login Password" }
 
-    // MARK: Account (vault identity)
-
-    static func account(for databaseURL: URL) -> String {
-        if let salt = AuthCrypto.vaultSaltB64(databaseURL: databaseURL) { return "vault:\(salt)" }
-        return "path:\(databaseURL.standardizedFileURL.path)"
+    private static func accountKey(for vaultID: String) -> String {
+        "vault2:\(vaultID)"
     }
 
-    // MARK: Verification
-
-    /// Shows the Touch ID (or password) prompt. Returns the evaluated context for Keychain reads.
     static func verify(reason: String) async throws -> LAContext {
         let context = LAContext()
         context.localizedCancelTitle = "Cancel"
@@ -81,91 +66,189 @@ enum TouchIDKeychain {
         }
     }
 
-    // MARK: Enrollment
+    // MARK: - Vault v2 DEK Storage
 
-    /// Verifies the user, stores the vault secret (if any) and returns the new passkey record.
-    static func enroll(account: String, label: String, vaultSecret: String?, displayName: String) async throws -> PasskeyCredentialRecord {
-        _ = try await verify(reason: "register \(methodName) for \(displayName) in Koban Vault")
-        if let vaultSecret, !vaultSecret.isEmpty { try storeSecret(vaultSecret, account: account) }
-        let now = Date().timeIntervalSince1970.rounded(.down)
-        var bytes = [UInt8](repeating: 0, count: 16)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return PasskeyCredentialRecord(id: "winhello-\(AuthCrypto.base64URL(Data(bytes)))",
-                                       name: label.isEmpty ? methodName : label,
-                                       kind: recordKind, createdAt: now, lastUsedAt: now)
+    static func enrollDEK(_ rawDEK: Data, vaultID: String, displayName: String) async throws {
+        guard rawDEK.count == 32 else { throw AuthError.failed("Invalid DEK length.") }
+        _ = try await verify(reason: "enable \(methodName) Quick Unlock for \(displayName) in Koban Vault")
+        try storeDEK(rawDEK, vaultID: vaultID)
     }
 
-    /// Stores / replaces the vault secret for Touch ID unlock (no prompt). nil/empty removes it.
-    static func updateSecret(_ secret: String?, account: String) {
-        if let secret, !secret.isEmpty { try? storeSecret(secret, account: account) } else { deleteItems(account: account) }
+    static func hasDEK(vaultID: String) -> Bool {
+        let account = accountKey(for: vaultID)
+        for dataProtection in [true, false] {
+            var q = vaultQuery(account: account, dataProtection: dataProtection)
+            q[kSecMatchLimit as String] = kSecMatchLimitOne
+            q[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+            var out: AnyObject?
+            let status = SecItemCopyMatching(q as CFDictionary, &out)
+            if status == errSecSuccess || status == errSecInteractionNotAllowed {
+                return true
+            }
+        }
+        return false
     }
 
-    static func removeSecret(account: String) { deleteItems(account: account) }
-
-    // MARK: Sign-in
-
-    /// Prompts, then returns the vault passphrase from the Keychain (nil if none is stored).
-    static func authenticate(account: String, displayName: String) async throws -> String? {
+    static func unlockDEK(vaultID: String, displayName: String) async throws -> Data {
         let context = try await verify(reason: "unlock Koban Vault for \(displayName)")
-        return readSecret(account: account, context: context)
+        let account = accountKey(for: vaultID)
+        for dataProtection in [true, false] {
+            var q = vaultQuery(account: account, dataProtection: dataProtection)
+            q[kSecReturnData as String] = true
+            q[kSecMatchLimit as String] = kSecMatchLimitOne
+            q[kSecUseAuthenticationContext as String] = context
+            var out: AnyObject?
+            let status = SecItemCopyMatching(q as CFDictionary, &out)
+            if status == errSecSuccess, let data = out as? Data, data.count == 32 {
+                return data
+            }
+        }
+        throw AuthError.notEnrolled
     }
 
-    // MARK: Keychain
+    static func storeDEK(_ rawDEK: Data, vaultID: String) throws {
+        let account = accountKey(for: vaultID)
+        removeDEK(vaultID: vaultID)
 
-    private struct Payload: Codable { var v = 1; var secret: String? }
+        if let access = SecAccessControlCreateWithFlags(
+            nil,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            .biometryCurrentSet,
+            nil
+        ) {
+            var q = vaultQuery(account: account, dataProtection: true)
+            q[kSecAttrAccessControl as String] = access
+            q[kSecAttrLabel as String] = "Koban Vault v2 DEK (\(methodName))"
+            q[kSecValueData as String] = rawDEK
+            if SecItemAdd(q as CFDictionary, nil) == errSecSuccess { return }
+        }
 
-    private static func baseQuery(account: String, dataProtection: Bool) -> [String: Any] {
+        var q = vaultQuery(account: account, dataProtection: false)
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        q[kSecAttrLabel as String] = "Koban Vault v2 DEK (\(methodName))"
+        q[kSecValueData as String] = rawDEK
+        let status = SecItemAdd(q as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw AuthError.failed("Could not store Vault DEK in Keychain (\(status)).")
+        }
+    }
+
+    static func removeDEK(vaultID: String) {
+        let account = accountKey(for: vaultID)
+        for dataProtection in [true, false] {
+            SecItemDelete(vaultQuery(account: account, dataProtection: dataProtection) as CFDictionary)
+        }
+    }
+
+    static func cleanupLegacyTouchIDItems() {
+        for dataProtection in [true, false] {
+            var q: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: legacyTouchIDService,
+            ]
+            if dataProtection { q[kSecUseDataProtectionKeychain as String] = true }
+            SecItemDelete(q as CFDictionary)
+        }
+    }
+
+    private static func vaultQuery(account: String, dataProtection: Bool) -> [String: Any] {
         var q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: vaultService,
             kSecAttrAccount as String: account,
         ]
         if dataProtection { q[kSecUseDataProtectionKeychain as String] = true }
         return q
     }
 
-    private static func storeSecret(_ secret: String, account: String) throws {
-        deleteItems(account: account)
-        let data = try JSONEncoder().encode(Payload(secret: secret))
+    // MARK: - Remembered Key File Path (Local Machine Preference Only)
 
-        // 1. Biometry-bound item in the data-protection keychain (needs a signed build with entitlements).
-        if let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-                                                        .biometryCurrentSet, nil) {
-            var q = baseQuery(account: account, dataProtection: true)
-            q[kSecAttrAccessControl as String] = access
-            q[kSecAttrLabel as String] = "Koban Vault (Touch ID)"
-            q[kSecValueData as String] = data
-            if SecItemAdd(q as CFDictionary, nil) == errSecSuccess { return }
-        }
-
-        // 2. Login keychain; reads are gated by LAContext.
-        var q = baseQuery(account: account, dataProtection: false)
-        q[kSecAttrLabel as String] = "Koban Vault (Touch ID)"
-        q[kSecValueData as String] = data
-        let status = SecItemAdd(q as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw AuthError.failed("Could not store the Touch ID credential in the Keychain (\(status)).")
+    static func rememberKeyfileURL(_ url: URL?, vaultID: String) {
+        let key = "\(keyfilePrefPrefix)\(vaultID)"
+        if let url {
+            UserDefaults.standard.set(url.path, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
         }
     }
 
-    private static func readSecret(account: String, context: LAContext) -> String? {
-        for dataProtection in [true, false] {
-            var q = baseQuery(account: account, dataProtection: dataProtection)
-            q[kSecReturnData as String] = true
-            q[kSecMatchLimit as String] = kSecMatchLimitOne
-            q[kSecUseAuthenticationContext as String] = context
-            var out: AnyObject?
-            let status = SecItemCopyMatching(q as CFDictionary, &out)
-            if status == errSecSuccess, let data = out as? Data {
-                return (try? JSONDecoder().decode(Payload.self, from: data))?.secret
-            }
-        }
-        return nil
+    static func rememberedKeyfileURL(vaultID: String) -> URL? {
+        let key = "\(keyfilePrefPrefix)\(vaultID)"
+        guard let path = UserDefaults.standard.string(forKey: key),
+              !path.isEmpty,
+              FileManager.default.fileExists(atPath: path) else { return nil }
+        return URL(fileURLWithPath: path)
     }
 
-    private static func deleteItems(account: String) {
-        for dataProtection in [true, false] {
-            SecItemDelete(baseQuery(account: account, dataProtection: dataProtection) as CFDictionary)
+    // MARK: - WebDAV Password Keychain Storage
+
+    private static func webdavAccountKey(url: String, username: String) -> String {
+        let u = url.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let n = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(u)|\(n)"
+    }
+
+    static func saveWebDavPassword(_ password: String, url: String, username: String) {
+        let acct = webdavAccountKey(url: url, username: username)
+        guard !acct.hasPrefix("|"), !acct.hasSuffix("|"), !password.isEmpty else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: webdavService,
+            kSecAttrAccount as String: acct,
+        ]
+        SecItemDelete(query as CFDictionary)
+
+        var item = query
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        item[kSecAttrLabel as String] = "Koban WebDAV Sync"
+        item[kSecValueData as String] = Data(password.utf8)
+        SecItemAdd(item as CFDictionary, nil)
+    }
+
+    static func loadWebDavPassword(url: String, username: String) -> String? {
+        let acct = webdavAccountKey(url: url, username: username)
+        guard !acct.hasPrefix("|"), !acct.hasSuffix("|") else { return nil }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: webdavService,
+            kSecAttrAccount as String: acct,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var out: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess,
+              let data = out as? Data,
+              let str = String(data: data, encoding: .utf8),
+              !str.isEmpty else { return nil }
+        return str
+    }
+
+    static func stripAndStoreWebDavPassword(in state: LedgerState) -> LedgerState {
+        guard var webdav = state.settings.webdav else { return state }
+        if let pw = webdav.password, !pw.isEmpty,
+           !webdav.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !webdav.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            saveWebDavPassword(pw, url: webdav.url, username: webdav.username)
         }
+        webdav.password = nil
+        var next = state
+        next.settings.webdav = webdav
+        return next
+    }
+
+    static func injectLocalWebDavPassword(in state: LedgerState) -> LedgerState {
+        guard var webdav = state.settings.webdav else { return state }
+        let cur = webdav.password ?? ""
+        if !cur.isEmpty {
+            saveWebDavPassword(cur, url: webdav.url, username: webdav.username)
+            return state
+        }
+        if let stored = loadWebDavPassword(url: webdav.url, username: webdav.username) {
+            webdav.password = stored
+            var next = state
+            next.settings.webdav = webdav
+            return next
+        }
+        return state
     }
 }

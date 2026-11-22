@@ -21,8 +21,15 @@ struct SetupOptions: Sendable {
     /// nil when the accounts step was skipped.
     var accounts: [FinancialAccount]?
     var skipAccountsSetup: Bool
-    /// Trimmed custom vault passphrase; nil = leave the vault key unchanged.
+    var ownerDisplayName: String
+    /// Master Password for Vault v2 creation / update.
     var vaultPassphrase: String?
+    var keyfileURL: URL?
+    var rememberKeyfile: Bool
+    var createRecoveryKey: Bool
+    var enrollTouchID: Bool
+    var autoLockMinutes: Int
+    var lockOnMinimize: Bool
     var confirmBeforeMonthCopy: Bool
     var monthCopyScope: MonthCopyScope
     var autoPromptCopyOnEmptyMonth: Bool
@@ -55,6 +62,7 @@ enum OnboardingSetup {
             fresh.settings.confirmBeforeMonthCopy = opts.confirmBeforeMonthCopy
             fresh.settings.monthCopyScope = opts.monthCopyScope
             fresh.settings.autoPromptCopyOnEmptyMonth = opts.autoPromptCopyOnEmptyMonth
+            fresh.settings.ownerDisplayName = opts.ownerDisplayName
             fresh.settings.language = state.settings.language ?? L10n.language
             fresh.settings.autoCheckUpdates = state.settings.autoCheckUpdates ?? true
             return fresh
@@ -112,15 +120,16 @@ enum OnboardingSetup {
         next.settings.confirmBeforeMonthCopy = opts.confirmBeforeMonthCopy
         next.settings.monthCopyScope = opts.monthCopyScope
         next.settings.autoPromptCopyOnEmptyMonth = opts.autoPromptCopyOnEmptyMonth
+        next.settings.ownerDisplayName = opts.ownerDisplayName
         next.settings.language = state.settings.language ?? L10n.language
         return next
     }
 
-    /// Toast shown by App.tsx after setup.
+    /// Toast shown after setup.
     static func completionMessage(skippedAccounts: Bool) -> String {
         skippedAccounts
-            ? "Koban setup complete (Account setup skipped for later)."
-            : "Koban setup, accounts, and encrypted vault configured."
+            ? "Koban setup complete (Vault Format v2 encrypted)."
+            : "Koban setup, accounts, and Vault Format v2 configured."
     }
 }
 
@@ -184,27 +193,5 @@ enum OnboardingDrafts {
         }
         return Totals(liquid: sum([.liquid]), retirement: sum([.retirement]),
                       investmentFixed: sum([.investment, .fixedAsset]), liability: sum([.liability], abs: true))
-    }
-}
-
-// MARK: - AuthConfig (handleFinish in OnboardingModal.tsx)
-
-extension OnboardingSetup {
-    /// handleFinish: login enabled when required, a passkey exists or a vault passphrase was set;
-    /// the passphrase also becomes the master-passphrase verifier (PBKDF2, utils/auth.ts).
-    static func finishAuth(_ config: AuthConfig, requireLoginOnStartup: Bool, userDisplayName: String,
-                           vaultPassphrase: String?) -> AuthConfig {
-        var next = config
-        let pass = vaultPassphrase?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        next.enabled = requireLoginOnStartup || !config.passkeys.isEmpty || !pass.isEmpty
-        let name = userDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        next.userDisplayName = name.isEmpty ? "Koban Owner" : name
-        if !pass.isEmpty {
-            let verifier = AuthCrypto.hashPassphraseVerifier(pass)
-            next.hasMasterPassphrase = true
-            next.passphraseSaltB64 = verifier.saltB64
-            next.passphraseVerifierHashB64 = verifier.hashB64
-        }
-        return next
     }
 }

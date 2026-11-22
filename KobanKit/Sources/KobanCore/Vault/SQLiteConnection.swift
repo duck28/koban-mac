@@ -21,9 +21,11 @@ final class SQLiteConnection {
     /// Tells SQLite to copy bound strings (equivalent of the C macro SQLITE_TRANSIENT).
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-    init(path: String) throws {
+    init(path: String, readOnly: Bool = false) throws {
         self.path = path
-        let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
+        let flags = readOnly
+            ? (SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX)
+            : (SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX)
         let rc = sqlite3_open_v2(path, &handle, flags, nil)
         guard rc == SQLITE_OK else {
             let err = SQLiteError(code: rc, message: handle.map { String(cString: sqlite3_errmsg($0)) } ?? "open failed")
@@ -34,8 +36,15 @@ final class SQLiteConnection {
         sqlite3_busy_timeout(handle, 3_000)
     }
 
+    func close() {
+        if let h = handle {
+            sqlite3_close(h)
+            handle = nil
+        }
+    }
+
     deinit {
-        sqlite3_close(handle)
+        close()
     }
 
     /// Executes one or more SQL statements without parameters.

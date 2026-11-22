@@ -45,8 +45,10 @@ struct SetupWizardView: View {
             if model == nil, let existingModel {
                 model = existingModel
             } else if model == nil {
-                model = SetupWizardModel(base: store.setupBaseState, auth: store.loadSetupAuthConfig(),
-                                         isFirstRun: isFirstRun, hasCustomPassphrase: store.hasCustomPassphrase,
+                AuthCenter.shared.refresh(store: store, force: true)
+                model = SetupWizardModel(base: store.setupBaseState,
+                                         vaultStatus: AuthCenter.shared.vaultStatus,
+                                         isFirstRun: isFirstRun,
                                          initialStep: initialStep)
             }
         }

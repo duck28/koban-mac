@@ -322,7 +322,7 @@ final class WebDavSyncCenter {
         }
     }
 
-    enum Resolution { case useCloud, keepLocal, decideLater, cancelFirstLink }
+    enum Resolution { case merge, useCloud, keepLocal, decideLater, cancelFirstLink }
 
     func resolve(_ choice: Resolution) async {
         guard let store else { return }
@@ -342,13 +342,36 @@ final class WebDavSyncCenter {
             store.applySettingsChange { $0.webdav?.mode = .backup }
             status = .none
             return
-        case .useCloud, .keepLocal:
+        case .merge, .useCloud, .keepLocal:
             break
         }
         guard let c else { return }
         await exclusive {
             do {
-                if choice == .useCloud {
+                if choice == .merge {
+                    store.flushPendingSave()
+                    guard let dekData = store.vault?.dek?.withUnsafeBytes({ Data($0) }) else {
+                        throw VaultError.vaultLocked
+                    }
+                    let (remoteState, _) = try await WebDav.fetchDecryptedForMerge(
+                        url: c.url,
+                        username: c.username,
+                        password: c.password ?? "",
+                        filename: c.remoteFileName,
+                        sessionDEK: dekData
+                    )
+                    try store.mergeRemoteWebDavState(remoteState)
+                    let res = try await WebDav.push(
+                        localDatabase: store.activeDatabaseFile,
+                        url: c.url,
+                        username: c.username,
+                        password: c.password ?? "",
+                        filename: c.remoteFileName,
+                        force: true
+                    )
+                    setStatus(.synced(Date(timeIntervalSince1970: res.timestamp)), message: res.message)
+                    store.notify("Merged cloud and local changes and synced.")
+                } else if choice == .useCloud {
                     store.flushPendingSave()
                     try await pullAndReload(store, c)
                     store.notify("Loaded the latest vault from WebDAV.")
@@ -480,21 +503,22 @@ extension LedgerStore {
     }
 
     /// Closes the vault, installs a downloaded DB file (keeping koban-pre-webdav-sync-<secs>.db and
-    /// writing the sync state) and reloads the ledger. The app lock stays as it was.
+    /// writing the sync state) and reloads the ledger. Keeps session unlocked if DEK matches.
     func installWebDavDownload(_ data: Data, result: WebDavSyncResult) throws {
         flushPendingSave()
-        let pass = vault?.passphrase
+        let activeDEK = vault?.dek?.withUnsafeBytes { Data($0) }
         let local = activeDatabaseFile
         let wasLocked = isAppLocked
+        vault?.lock()
         vault = nil
         do {
             try WebDav.installDownloadedDatabase(data, at: local, result: result)
         } catch {
-            reopenVault(passphrase: pass)
+            reopenWithDEK(activeDEK)
             throw error
         }
-        reopenVault(passphrase: pass)
-        if wasLocked, phase == .ready { isAppLocked = true }
+        reopenWithDEK(activeDEK)
+        if wasLocked, phase == .ready { lock() }
     }
 
     /// First-run "Open Vault from WebDAV…" form.

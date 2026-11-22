@@ -1,0 +1,56 @@
+{
+  "version": 2,
+  "vault_id_b64": "ICAgICAgICAgICAgICAgIA==",
+  "koban_argon2id_default": {
+    "passphrase_nfc": "correct horse battery staple",
+    "salt_hex": "000102030405060708090a0b0c0d0e0f",
+    "m_kib": 65536,
+    "t": 3,
+    "p": 4,
+    "kek_hex": "853b272a44db1421c02962669a55eb0994f3cab385ed1c4c79253eee19bab49e"
+  },
+  "nfc_normalization": {
+    "nfd": "cafe\u0301-koban-vault-2026",
+    "nfc": "caf\u00e9-koban-vault-2026",
+    "salt_hex": "20202020202020202020202020202020",
+    "m_kib": 1024,
+    "t": 2,
+    "p": 2,
+    "kek_hex": "a71455820a33caa596f9591b1dcd272f91bf8327ce95df14cac53e04c670a9a7"
+  },
+  "composite_keyfile": {
+    "passphrase": "koban-master-passphrase",
+    "keyfile_secret_hex": "3333333333333333333333333333333333333333333333333333333333333333",
+    "salt_hex": "20202020202020202020202020202020",
+    "m_kib": 1024,
+    "t": 2,
+    "p": 2,
+    "ikm_hex": "5d03d9c09564dde4aad80f0c7f7c7d437c080fbf42a5f59b55a1e78688137de4",
+    "kek_hex": "4bdf8bcb050d83aa08c8349490cf67bc389f2eb228060c0b6a37cdd5facf848b"
+  },
+  "recovery_key": {
+    "recovery_bytes_hex": "5151515151515151515151515151515151515151",
+    "crockford_grouped": "A58N-2MAH-A58N-2MAH-A58N-2MAH-A58N-2MAH",
+    "vault_id_hex": "20202020202020202020202020202020",
+    "kek_hex": "c7ec40f9302d05a99f4e40fe2381e7bb5d48fb434ab70a7956ad41827a24e7a4"
+  },
+  "hkdf_ledger": {
+    "dek_hex": "1010101010101010101010101010101010101010101010101010101010101010",
+    "vault_id_hex": "20202020202020202020202020202020",
+    "info": "koban/v2/ledger",
+    "ledger_key_hex": "e001272d8d9dd65d6dbfa63802162de07454d262c0ed4fb4f69beb57120b92b3"
+  },
+  "slot_wrap": {
+    "slot_id": "AAAAAAAAAAAAAAAAAAAAAA",
+    "kind": "passphrase",
+    "aad": "koban/v2/slot/ICAgICAgICAgICAgICAgIA==/AAAAAAAAAAAAAAAAAAAAAA/passphrase",
+    "nonce_b64": "AQEBAQEBAQEBAQEB",
+    "ciphertext_b64": "nNtY0vmlv3XDabOC2LXkrGx+BncZLYa2GwWjrcsbbVmEumH3yUpUTn8FPSnSHobf"
+  },
+  "ledger_encrypt": {
+    "plaintext": "{\"hello\":\"koban-v2\"}",
+    "aad": "koban/v2/ledger/ICAgICAgICAgICAgICAgIA==/ledger_state",
+    "nonce_b64": "AgICAgICAgICAgIC",
+    "ciphertext_b64": "6fhaDsD8PBApWB6OghrOj09+TYAelI3gzbN+BjPeWQe2/pTu"
+  }
+}

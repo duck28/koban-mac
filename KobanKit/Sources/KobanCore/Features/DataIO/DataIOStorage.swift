@@ -1,8 +1,9 @@
+import CryptoKit
 import Foundation
 
 /// Ports of the file-level Tauri commands in src-tauri/src/lib.rs used by the Backups view:
 /// list_backups, restore_backup_file, copy_db_file, move_database_location,
-/// reset_database_location, get_db_info.
+/// reset_database_location, get_db_info, plus legacy v1 backup scanning/upgrading.
 enum DataIOStorage {
     struct StorageError: Error, LocalizedError, Equatable {
         var message: String
@@ -21,29 +22,67 @@ enum DataIOStorage {
             let name = u.lastPathComponent
             guard name.hasSuffix(".db") || name.hasSuffix(".sqlite"),
                   let v = try? u.resourceValues(forKeys: Set(keys)), v.isRegularFile == true else { return nil }
-            return BackupEntry(name: name, url: u, size: Int64(v.fileSize ?? 0), modified: v.contentModificationDate ?? .distantPast)
+            let ver = (try? KobanVault.detectFormatVersion(at: u)) ?? 1
+            return BackupEntry(
+                name: name,
+                url: u,
+                size: Int64(v.fileSize ?? 0),
+                modified: v.contentModificationDate ?? .distantPast,
+                formatVersion: ver
+            )
         }
         .sorted { $0.modified > $1.modified }
     }
 
-    /// restore_backup_file (preview part): decrypts a .db / .sqlite backup with the given
-    /// passphrase (falling back to `sessionPassphrase`, like the Rust session key), or parses a
-    /// plain .json snapshot (UTF-8 BOM tolerated).
-    static func readBackup(at url: URL, passphrase: String?, sessionPassphrase: String?) throws -> LedgerState {
+    static func listLegacyV1Backups(in backupDir: String?, activeDatabase: URL = KobanPaths.activeDatabaseURL) -> [BackupEntry] {
+        var seen = Set<String>()
+        var results: [BackupEntry] = []
+        let activeStd = activeDatabase.standardizedFileURL.path
+        var dirs: [URL] = [activeDatabase.deletingLastPathComponent()]
+        if let dir = backupDir, !dir.isEmpty {
+            dirs.append(URL(fileURLWithPath: dir, isDirectory: true))
+        }
+        for dirURL in dirs {
+            for entry in listBackups(in: dirURL.path) {
+                let p = entry.url.standardizedFileURL.path
+                guard p != activeStd, !seen.contains(p) else { continue }
+                seen.insert(p)
+                if entry.formatVersion == 1 {
+                    results.append(entry)
+                }
+            }
+        }
+        return results
+    }
+
+    static func deleteBackupFile(at url: URL, activeDatabase: URL = KobanPaths.activeDatabaseURL) throws {
+        if url.standardizedFileURL == activeDatabase.standardizedFileURL {
+            throw StorageError("Refusing to delete the active database.")
+        }
+        try FileManager.default.removeItem(at: url)
+    }
+
+    /// restore_backup_file (preview part): decrypts a v2 or legacy v1 .db / .sqlite backup
+    /// (falling back to session DEK when matching the vault), or parses a plain .json snapshot.
+    static func readBackup(
+        at url: URL,
+        passphrase: String?,
+        keyfileURL: URL? = nil,
+        sessionDEK: SymmetricKey? = nil
+    ) throws -> LedgerState {
         guard FileManager.default.fileExists(atPath: url.path) else { throw StorageError("Backup file does not exist.") }
         let ext = url.pathExtension.lowercased()
         if ext == "db" || ext == "sqlite" {
-            let secret = (passphrase?.isEmpty == false) ? passphrase : sessionPassphrase
-            let vault: KobanVault
             do {
-                vault = try KobanVault(url: url, passphrase: secret)
+                return try KobanVault.openBackup(
+                    at: url,
+                    passphrase: passphrase?.isEmpty == false ? passphrase : nil,
+                    keyfileURL: keyfileURL,
+                    sessionDEK: sessionDEK
+                )
             } catch {
                 throw StorageError("Failed to open backup SQLite database: \(error)")
             }
-            guard let state = try vault.load() else {
-                throw StorageError("No encrypted ledger data found in backup database.")
-            }
-            return state
         }
         var data = try Data(contentsOf: url)
         if data.starts(with: [0xEF, 0xBB, 0xBF]) { data = data.dropFirst(3) }
@@ -118,8 +157,11 @@ enum DataIOStorage {
                 throw StorageError("Failed to copy active SQLite database: \(error.localizedDescription)")
             }
             copySidecars(from: current, to: target)
-        } else {
-            do { _ = try KobanVault(url: target) } catch {
+        if !fm.fileExists(atPath: current.path) && !fm.fileExists(atPath: target.path) {
+            do {
+                try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                _ = try SQLiteConnection(path: target.path)
+            } catch {
                 throw StorageError("Failed to create new SQLite database: \(error)")
             }
         }
@@ -147,13 +189,7 @@ enum DataIOStorage {
 
     /// get_db_info for a database that is not open in this session.
     static func info(forDatabaseAt url: URL) -> DbInfo {
-        if let vault = try? KobanVault(url: url) {
-            return vault.info(isCustomLocation: KobanPaths.isCustomLocation)
-        }
-        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
-        return DbInfo(dbPath: url.path, dbSize: (attrs?[.size] as? NSNumber)?.int64Value ?? 0,
-                      lastModified: attrs?[.modificationDate] as? Date, cipher: "AES-256-GCM",
-                      encryptedRecords: 0, hasCustomPassphrase: false, isCustomLocation: KobanPaths.isCustomLocation)
+        KobanVault(url: url).info(isCustomLocation: KobanPaths.isCustomLocation)
     }
 
     // MARK: - Formatting (BackupsExportView.tsx helpers)

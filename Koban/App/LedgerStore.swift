@@ -82,90 +82,118 @@ final class LedgerStore {
     var lastBackupError: String?
     var lastSavedAt: Date?
 
-    /// True when the open vault is protected by a custom passphrase (locking only makes sense then).
-    var hasCustomPassphrase = false
+    /// True while a valid encrypted vault is protected (always true in Vault v2).
+    var hasCustomPassphrase = true
 
-    /// The open vault. Features (passphrase, restore, DB location) use it directly.
+    /// The open vault. Features (unlock, restore, DB location) use it directly.
     @ObservationIgnored var vault: KobanVault?
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
-    /// The ledger as last loaded from / written to the vault. Saving re-encrypts with fresh nonces, so an
-    /// unchanged ledger is not re-saved (the DB file would change and look like a local edit to WebDAV sync).
+    /// The ledger as last loaded from / written to the vault.
     @ObservationIgnored private var lastPersistedState: LedgerState?
 
     var isReady: Bool { phase == .ready }
-    /// Ready and not behind the app lock screen: required for every command that reads, exports,
-    /// imports or changes ledger data (menu items stay reachable while UnlockView is shown).
-    var isUnlockedAndReady: Bool { isReady && !isAppLocked }
-    var canLock: Bool { isReady && hasCustomPassphrase }
+    var isUnlockedAndReady: Bool { isReady && !isAppLocked && (vault?.isUnlocked ?? false) }
+    var canLock: Bool { isUnlockedAndReady }
     var databaseURL: URL { KobanPaths.activeDatabaseURL }
+
+    func wireVaultHooks(_ v: KobanVault) {
+        v.onStripWebDavPassword = { TouchIDKeychain.stripAndStoreWebDavPassword(in: $0) }
+        v.onInjectWebDavPassword = { TouchIDKeychain.injectLocalWebDavPassword(in: $0) }
+    }
 
     // MARK: - Lifecycle
 
     func bootstrap() {
         guard phase == .loading else { return }
         AutoLockMonitor.install(store: self)
-        openVault(passphrase: nil)
+        refreshVaultPhase()
     }
 
-    func unlock(passphrase: String) {
-        openVault(passphrase: passphrase)
+    /// Reads Vault v2 metadata read-only without decrypting or prompting for biometrics.
+    func refreshVaultPhase() {
+        do {
+            let v = KobanVault(url: KobanPaths.activeDatabaseURL)
+            wireVaultHooks(v)
+            self.vault = v
+            lastPersistedState = nil
+            let st = try v.status(
+                deviceSlotEnrolled: { TouchIDKeychain.hasDEK(vaultID: $0) },
+                isCustomLocation: KobanPaths.isCustomLocation
+            )
+            hasCustomPassphrase = true
+            AuthCenter.shared.refresh(store: self, force: true)
+            if !st.exists || !st.hasLedgerState {
+                phase = .needsSetup
+            } else {
+                phase = .locked(message: nil)
+            }
+        } catch {
+            phase = .failed(DataIOMessages.text(error))
+        }
+    }
+
+    func finishUnlock(loaded stored: LedgerState, greet: Bool = true) {
+        let loaded = DeviceSettings.applyBackupDir(to: stored)
+        state = loaded
+        lastPersistedState = loaded
+        applyAppearance()
+        AuthCenter.shared.refresh(store: self, force: true)
+        AuthCenter.shared.didLaunchCheck = true
+        isAppLocked = false
+        phase = loaded.settings.setupCompleted ? .ready : .needsSetup
+        if phase == .ready {
+            AutoLockMonitor.install(store: self)
+            AutoLockMonitor.resetIdle()
+            webDavAfterLoad()
+            UpdateChecker.shared.checkOnLaunchIfEnabled(autoCheck: loaded.settings.autoCheckUpdates ?? true)
+            if greet {
+                let owner = (loaded.settings.ownerDisplayName ?? "").isEmpty ? "Koban Owner" : loaded.settings.ownerDisplayName!
+                notify("Signed in as \(owner).")
+            }
+        }
     }
 
     func lock() {
         flushPendingSave()
-        vault = nil
+        pendingSave?.cancel()
+        pendingSave = nil
+        vault?.lock()
         state = .empty()
+        lastPersistedState = nil
+        isAppLocked = false
         phase = .locked(message: nil)
+        AuthCenter.shared.refresh(store: self, force: true)
     }
 
-    /// Re-opens the active database (after a restore, DB move, or passphrase change).
-    func reopenVault(passphrase: String? = nil) {
-        vault = nil
-        phase = .loading
-        openVault(passphrase: passphrase)
-    }
-
-    private func openVault(passphrase: String?) {
+    /// Re-opens the active DB cleanly; if `sessionDEK` still unlocks the replacement DB, stays unlocked.
+    func reopenWithDEK(_ rawDEK: Data?) {
+        let v = KobanVault(url: KobanPaths.activeDatabaseURL)
+        wireVaultHooks(v)
+        self.vault = v
+        lastPersistedState = nil
         do {
-            let vault = try KobanVault(url: KobanPaths.activeDatabaseURL, passphrase: passphrase)
-            self.vault = vault
-            hasCustomPassphrase = vault.hasCustomPassphrase
-            lastPersistedState = nil
-            if let stored = try vault.load() {
-                // This Mac's backup folder replaces the synced one. Counted as already saved, so
-                // loading never writes (and in primary mode pushes) a different folder back.
-                let loaded = DeviceSettings.applyBackupDir(to: stored)
-                state = loaded
-                lastPersistedState = loaded
-                applyAppearance()
-                phase = loaded.settings.setupCompleted ? .ready : .needsSetup
-                if phase == .ready {
-                    isAppLocked = shouldLockAfterLoad()
-                    webDavAfterLoad() // WebDAV primary storage: startup sync (Features/DataIO)
-                    UpdateChecker.shared.checkOnLaunchIfEnabled(autoCheck: loaded.settings.autoCheckUpdates ?? true)
-                }
-            } else {
+            let st = try v.status(
+                deviceSlotEnrolled: { TouchIDKeychain.hasDEK(vaultID: $0) },
+                isCustomLocation: KobanPaths.isCustomLocation
+            )
+            if !st.exists || !st.hasLedgerState {
+                AuthCenter.shared.refresh(store: self, force: true)
                 phase = .needsSetup
+                return
             }
-        } catch VaultError.passphraseRequired {
+            if let rawDEK, let loaded = try? v.unlockWithDEK(rawDEK) {
+                finishUnlock(loaded: loaded, greet: false)
+                return
+            }
+            state = .empty()
             phase = .locked(message: nil)
-        } catch VaultError.wrongPassphrase {
-            phase = .locked(message: passphrase == nil
-                ? "This vault could not be decrypted with the default key. Enter its passphrase."
-                : "Wrong passphrase. Please try again.")
+            AuthCenter.shared.refresh(store: self, force: true)
         } catch {
-            phase = .failed(String(describing: error))
+            phase = .failed(DataIOMessages.text(error))
         }
     }
 
-    /// Creates a new ledger in the active database location.
-    func createLedger(setupMode: ProfileSetupMode, currency: String) {
-        state = .empty(setupMode: setupMode, currency: currency)
-        phase = .ready
-        saveNow()
-    }
-
-    /// Switches to an existing koban.db (e.g. one copied from Windows or kept in a synced folder).
+    /// Switches to an existing koban.db (e.g. one shared via iCloud, Synology Drive, or copied from Windows).
     func openExistingDatabase() {
         let panel = NSOpenPanel()
         panel.title = "Open Koban Database"
@@ -173,12 +201,16 @@ final class LedgerStore {
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
+            _ = try KobanVault.detectFormatVersion(at: url)
             try KobanPaths.useDatabase(at: url)
+            flushPendingSave()
+            vault?.lock()
             vault = nil
+            state = .empty()
             phase = .loading
-            openVault(passphrase: nil)
+            refreshVaultPhase()
         } catch {
-            phase = .failed(String(describing: error))
+            phase = .failed(DataIOMessages.text(error))
         }
     }
 
@@ -388,28 +420,47 @@ final class LedgerStore {
         saveNow()
     }
 
-    /// Encrypts and writes the ledger, then runs the automatic backup if configured.
-    /// WebDAV auto-sync runs in afterSave() (Features/DataIO).
-    func saveNow() {
+    /// Encrypts and writes the ledger atomically; merges automatically if cloud sync modified the DB on disk.
+    func saveNow(forceOverwrite: Bool = false) {
         pendingSave = nil
-        guard phase == .ready else { return }
-        if let last = lastPersistedState, last == state, vault != nil { return }
+        guard phase == .ready, let vault, vault.isUnlocked else { return }
+        if !forceOverwrite, let last = lastPersistedState, last == state { return }
         DeviceSettings.rememberBackupDir(state.settings.backupDir)
         do {
-            let vault = try self.vault ?? KobanVault(url: KobanPaths.activeDatabaseURL)
-            self.vault = vault
-            try vault.save(state)
+            try vault.save(state, forceOverwrite: forceOverwrite)
             lastPersistedState = state
             lastSavedAt = Date()
             lastSaveError = nil
+        } catch VaultError.externalDatabaseModified {
+            do {
+                let check = try vault.checkExternalChange()
+                if let extState = check.externalState {
+                    let (merged, summary) = LedgerMerge.merge(local: state, remote: extState, preferLocal: true)
+                    let normalized = DeviceSettings.applyBackupDir(to: merged)
+                    state = normalized
+                    try vault.save(normalized, forceOverwrite: true)
+                    lastPersistedState = normalized
+                    lastSavedAt = Date()
+                    lastSaveError = nil
+                    if summary.totalChanges > 0 {
+                        notify("Database changed on disk — merged external updates before saving.")
+                    }
+                } else {
+                    lastSaveError = VaultError.externalDatabaseModified.description
+                    return
+                }
+            } catch {
+                lastSaveError = DataIOMessages.text(error)
+                return
+            }
         } catch {
-            lastSaveError = String(describing: error)
+            lastSaveError = DataIOMessages.text(error)
             return
         }
 
         // A failed backup must not mark the save as failed or skip WebDAV sync (afterSave).
         let settings = state.settings
-        if settings.autoBackup, !settings.localBackupDir.isEmpty, let vault {
+        if settings.autoBackup, !settings.localBackupDir.isEmpty {
             do {
                 try BackupManager.backup(
                     database: vault.url,
@@ -425,5 +476,38 @@ final class LedgerStore {
             lastBackupError = nil
         }
         afterSave()
+    }
+
+    func checkExternalDatabaseChange() {
+        guard phase == .ready, !isAppLocked, let vault, vault.isUnlocked else { return }
+        do {
+            let check = try vault.checkExternalChange()
+            guard check.changed else { return }
+            if let extState = check.externalState {
+                let (merged, summary) = LedgerMerge.merge(local: state, remote: extState, preferLocal: true)
+                let normalized = DeviceSettings.applyBackupDir(to: merged)
+                state = normalized
+                if summary.totalChanges > 0 {
+                    try vault.save(normalized, forceOverwrite: true)
+                    notify("Synced external database updates (\(summary.totalChanges) change(s)).")
+                }
+                lastPersistedState = normalized
+            } else if check.error != nil {
+                lockVault()
+                notify("External database changed with updated credentials — please unlock.")
+            }
+        } catch {
+            NSLog("External database check skipped: %@", error.localizedDescription)
+        }
+    }
+
+    func mergeRemoteWebDavState(_ remoteState: LedgerState) throws {
+        guard let vault, vault.isUnlocked else { throw VaultError.vaultLocked }
+        let (merged, _) = LedgerMerge.merge(local: state, remote: remoteState, preferLocal: true)
+        let normalized = DeviceSettings.applyBackupDir(to: merged)
+        state = normalized
+        try vault.save(normalized, forceOverwrite: true)
+        lastPersistedState = normalized
+        lastSavedAt = Date()
     }
 }

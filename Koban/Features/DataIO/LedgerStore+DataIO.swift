@@ -76,7 +76,9 @@ enum DataIOPanels {
     static func open(extensions: [String], title: String = "Select File") -> URL? {
         let panel = NSOpenPanel()
         panel.title = title
-        panel.allowedContentTypes = extensions.compactMap { UTType(filenameExtension: $0) }
+        if !extensions.isEmpty {
+            panel.allowedContentTypes = extensions.compactMap { UTType(filenameExtension: $0) }
+        }
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         return panel.runModal() == .OK ? panel.url : nil
@@ -181,11 +183,21 @@ extension LedgerStore {
     var importDefaultMode: LedgerMode { state.settings.activeWorkspace == .freelancer ? .freelancer : .home }
 
     /// handlePrepareImport: asks for a file and builds the preview (nil when cancelled or failed).
-    func prepareImport(kind: ImportKind, targetMode: LedgerMode, passphrase: String?) -> ImportPreviewData? {
+    func prepareImport(
+        kind: ImportKind,
+        targetMode: LedgerMode,
+        passphrase: String?,
+        keyfileURL: URL? = nil
+    ) -> ImportPreviewData? {
         do {
             if kind == .databaseBackup {
                 guard let url = DataIOPanels.open(extensions: ["db", "sqlite", "json"]) else { return nil }
-                let restored = try DataIOStorage.readBackup(at: url, passphrase: passphrase, sessionPassphrase: vault?.passphrase)
+                let restored = try DataIOStorage.readBackup(
+                    at: url,
+                    passphrase: passphrase,
+                    keyfileURL: keyfileURL,
+                    sessionDEK: vault?.dek
+                )
                 return ImportPreviewData(kind: .databaseBackup, targetMode: targetMode, fileName: url.lastPathComponent,
                                          proposedState: restored, importedCount: ImportPreviewData.backupRecordCount(restored),
                                          backupPath: url.path)
@@ -238,10 +250,15 @@ extension LedgerStore {
     // MARK: - Backups
 
     /// handleRestoreFromPath: previews (or directly restores) a backup snapshot.
-    func restoreBackup(at path: String, passphrase: String? = nil) {
+    func restoreBackup(at path: String, passphrase: String? = nil, keyfileURL: URL? = nil) {
         do {
             let url = URL(fileURLWithPath: path)
-            let restored = try DataIOStorage.readBackup(at: url, passphrase: passphrase, sessionPassphrase: vault?.passphrase)
+            let restored = try DataIOStorage.readBackup(
+                at: url,
+                passphrase: passphrase,
+                keyfileURL: keyfileURL,
+                sessionDEK: vault?.dek
+            )
             if state.settings.confirmAndPreviewBeforeImport ?? true {
                 presentImportModal(initialPreview: ImportPreviewData(
                     kind: .databaseBackup, targetMode: importDefaultMode, fileName: url.lastPathComponent,
@@ -270,8 +287,8 @@ extension LedgerStore {
 
     /// handleReloadLedgerState: re-reads the ledger from the active database.
     func reloadLedgerState() {
-        let pass = vault?.passphrase
-        reopenVault(passphrase: pass)
+        let activeDEK = vault?.dek?.withUnsafeBytes { Data($0) }
+        reopenWithDEK(activeDEK)
         if phase == .ready || phase == .needsSetup {
             notify("Ledger state reloaded from synchronized database.")
         }
@@ -282,20 +299,22 @@ extension LedgerStore {
     func moveDatabase(toFolder folder: String) throws {
         if DataIOStorage.locationOverrideActive { throw DataIOStorage.StorageError(DataIOStorage.overrideMessage) }
         flushPendingSave()
-        let pass = vault?.passphrase
+        let activeDEK = vault?.dek?.withUnsafeBytes { Data($0) }
         let current = vault?.url ?? databaseURL
+        vault?.lock()
         vault = nil // close the SQLite handle before copying
-        defer { reopenVault(passphrase: pass) }
+        defer { reopenWithDEK(activeDEK) }
         try DataIOStorage.moveDatabase(toFolder: folder, current: current)
     }
 
     func resetDatabaseLocation() throws {
         if DataIOStorage.locationOverrideActive { throw DataIOStorage.StorageError(DataIOStorage.overrideMessage) }
         flushPendingSave()
-        let pass = vault?.passphrase
+        let activeDEK = vault?.dek?.withUnsafeBytes { Data($0) }
         let current = vault?.url ?? databaseURL
+        vault?.lock()
         vault = nil
-        defer { reopenVault(passphrase: pass) }
+        defer { reopenWithDEK(activeDEK) }
         try DataIOStorage.resetDatabaseLocation(current: current)
     }
 

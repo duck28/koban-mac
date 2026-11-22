@@ -2,122 +2,127 @@ import AppKit
 import Foundation
 import Observation
 
-/// Auth state that App.tsx keeps in useState (authConfig, …) — LedgerStore extensions can't add
-/// stored properties, so it lives in this singleton. Loaded per database file.
+/// Holds live Vault Format v2 status, one-time Recovery Key presentation state,
+/// and inactivity / minimize / external-sync monitors on macOS.
 @MainActor
 @Observable
 final class AuthCenter {
     static let shared = AuthCenter()
 
-    /// The AuthConfig of the active koban.db (vault_meta.auth_config).
-    private(set) var config: AuthConfig = .default
-    /// Database path the config/credential were loaded for.
-    private(set) var loadedPath: String?
-    /// Keychain account (vault salt) of the active vault.
-    private(set) var account: String = ""
-    /// vault_meta.salt_b64 of the active vault (for unwrapping Windows-wrapped vault secrets).
-    private(set) var vaultSaltB64: String?
-    /// Set once the launch-time lock decision was made (only the first load of a session locks).
+    private(set) var vaultStatus: VaultStatus?
+    var pendingRecoveryKey: String?
+
+    var authSettings: VaultAuthSettings {
+        vaultStatus?.authSettings ?? .default
+    }
+
+    var hasTouchIDEnrolled: Bool {
+        vaultStatus?.deviceSlotEnrolled ?? false
+    }
+
+    var rememberedKeyfileURL: URL? {
+        guard let vid = vaultStatus?.vaultID else { return nil }
+        return TouchIDKeychain.rememberedKeyfileURL(vaultID: vid)
+    }
+
     @ObservationIgnored var didLaunchCheck = false
 
-    /// Passkey records usable on macOS: `windows_hello_native` (OS user verification → Touch ID).
-    /// Includes records enrolled by the Onboarding wizard ({name: "Touch ID", kind: "windows_hello_native"}).
-    var macCredentials: [PasskeyCredentialRecord] { config.passkeys.filter { $0.kind == TouchIDKeychain.recordKind } }
-    var hasMacCredential: Bool { !macCredentials.isEmpty }
-
-    /// Vault passphrase for a Touch ID unlock: the Keychain secret, else a Windows-wrapped secret.
-    func resolveSecret(keychainSecret: String?) -> String? {
-        if let keychainSecret, !keychainSecret.isEmpty { return keychainSecret }
-        guard let saltB64 = vaultSaltB64, let salt = Data(base64Encoded: saltB64) else { return nil }
-        for rec in macCredentials {
-            if let token = rec.wrappedVaultSecret,
-               let s = try? AuthCrypto.unwrapVaultSecret(token, credentialId: rec.id, vaultSalt: salt), !s.isEmpty {
-                return s
-            }
-        }
-        return nil
-    }
-
-    /// Updates lastUsedAt of the macOS-usable records after a Touch ID sign-in (handleSignInWithPasskey).
-    func configMarkingUsed() -> AuthConfig {
-        var next = config
-        let now = Date().timeIntervalSince1970.rounded(.down)
-        if let idx = next.passkeys.firstIndex(where: { $0.kind == TouchIDKeychain.recordKind }) {
-            next.passkeys[idx].lastUsedAt = now
-        }
-        return next
-    }
-
-    /// Re-reads the auth config + Touch ID metadata if the active database changed (or `force`).
     func refresh(store: LedgerStore, force: Bool = false) {
         let url = KobanPaths.activeDatabaseURL
-        guard force || loadedPath != url.path else { return }
-        loadedPath = url.path
-        var json: String?
-        if let vault = store.vault, vault.url.standardizedFileURL == url.standardizedFileURL {
-            json = (try? vault.loadAuthConfigJSON()) ?? nil
-        } else if FileManager.default.fileExists(atPath: url.path), let vault = try? KobanVault(url: url) {
-            json = (try? vault.loadAuthConfigJSON()) ?? nil
+        if !force, let st = vaultStatus, st.dbPath == url.path,
+           st.unlocked == (store.vault?.isUnlocked ?? false) {
+            return
         }
-        config = AuthConfig.parse(json)
-        vaultSaltB64 = AuthCrypto.vaultSaltB64(databaseURL: url)
-        account = TouchIDKeychain.account(for: url)
-    }
-
-    /// In-memory only (like setAuthConfig without saveAuthConfig).
-    func setInMemory(_ next: AuthConfig) { config = next }
-
-    /// handleUpdateAuthConfig: state + persist to vault_meta.
-    func save(_ next: AuthConfig, store: LedgerStore) {
-        config = next
+        let vault = (store.vault?.url.standardizedFileURL == url.standardizedFileURL)
+            ? store.vault
+            : KobanVault(url: url)
         do {
-            let json = try next.jsonString()
-            if let vault = store.vault, vault.url.standardizedFileURL == KobanPaths.activeDatabaseURL.standardizedFileURL {
-                try vault.saveAuthConfigJSON(json)
-            } else {
-                try KobanVault(url: KobanPaths.activeDatabaseURL).saveAuthConfigJSON(json)
-            }
+            vaultStatus = try vault?.status(
+                deviceSlotEnrolled: { vid in TouchIDKeychain.hasDEK(vaultID: vid) },
+                isCustomLocation: KobanPaths.isCustomLocation
+            )
         } catch {
-            store.notify("Could not save login settings: \(error.localizedDescription)")
+            vaultStatus = nil
         }
     }
 
+    func updateAuthSettings(_ settings: VaultAuthSettings, store: LedgerStore) {
+        let url = KobanPaths.activeDatabaseURL
+        let vault = (store.vault?.url.standardizedFileURL == url.standardizedFileURL)
+            ? (store.vault ?? KobanVault(url: url))
+            : KobanVault(url: url)
+        do {
+            try vault.saveAuthSettings(settings)
+            refresh(store: store, force: true)
+        } catch {
+            store.notify("Could not save lock settings: \(error.localizedDescription)")
+        }
+    }
 }
 
-/// Inactivity auto-lock (the useEffect timer in App.tsx): any key press or click resets the timer;
-/// after `autoLockMinutes` idle the app lock screen is shown.
+/// Monitors user inactivity, window minimize/hide (`lockOnMinimize`), and external cloud-folder
+/// modifications (`checkExternalDatabaseChange`) on macOS.
 @MainActor
 enum AutoLockMonitor {
-    private static var monitor: Any?
+    private static var eventMonitor: Any?
     private static var timer: Timer?
+    private static var observers: [NSObjectProtocol] = []
     private static var lastActivity = Date()
+    private static var lastExternalCheck = Date.distantPast
     private static weak var store: LedgerStore?
 
     static func install(store: LedgerStore) {
         self.store = store
-        guard monitor == nil else { return }
+        guard eventMonitor == nil else { return }
         lastActivity = Date()
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
             lastActivity = Date()
             return event
         }
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
             MainActor.assumeIsolated { tick() }
         }
+
+        let nc = NotificationCenter.default
+        observers.append(nc.addObserver(forName: NSWindow.didMiniaturizeNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in handleMinimizeIfEnabled() }
+        })
+        observers.append(nc.addObserver(forName: NSApplication.didHideNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in handleMinimizeIfEnabled() }
+        })
+        observers.append(nc.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in triggerExternalCheckIfReady() }
+        })
     }
 
-    /// Restart the idle period (e.g. right after unlocking).
     static func resetIdle() { lastActivity = Date() }
+
+    private static func handleMinimizeIfEnabled() {
+        guard let store, store.isUnlockedAndReady else { return }
+        if AuthCenter.shared.authSettings.lockOnMinimize {
+            store.lockVault()
+        }
+    }
+
+    private static func triggerExternalCheckIfReady() {
+        guard let store, store.isUnlockedAndReady else { return }
+        guard Date().timeIntervalSince(lastExternalCheck) >= 3 else { return }
+        lastExternalCheck = Date()
+        store.checkExternalDatabaseChange()
+    }
 
     private static func tick() {
         guard let store, store.isReady, !store.isAppLocked else {
             lastActivity = Date()
             return
         }
-        let minutes = AuthCenter.shared.config.autoLockMinutes
-        guard minutes > 0 else { return }
-        if Date().timeIntervalSince(lastActivity) >= Double(minutes) * 60 {
+        let minutes = AuthCenter.shared.authSettings.autoLockMinutes
+        if minutes > 0, Date().timeIntervalSince(lastActivity) >= Double(minutes) * 60 {
             store.lockVault()
+            return
+        }
+        if Date().timeIntervalSince(lastExternalCheck) >= 30 {
+            triggerExternalCheckIfReady()
         }
     }
 }

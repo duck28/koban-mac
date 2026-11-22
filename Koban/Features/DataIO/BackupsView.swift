@@ -5,7 +5,9 @@ import SwiftUI
 struct BackupsView: View {
     @Environment(LedgerStore.self) private var store
     @State private var center = DataIOCenter.shared
-    @State private var newPassphrase = ""
+    @State private var restorePassphrase = ""
+    @State private var restoreKeyfileURL: URL?
+    @State private var showRestoreCreds = false
     @State private var maxBackupsText = ""
     @State private var viewport: CGFloat = 1360
 
@@ -107,41 +109,39 @@ struct BackupsView: View {
     }
 
     private func passphraseRow(info: DbInfo?) -> some View {
-        let custom = info?.hasCustomPassphrase ?? store.hasCustomPassphrase
+        let status = AuthCenter.shared.vaultStatus
         return HStack(alignment: .center, spacing: 12) {
-            HStack(alignment: .center, spacing: 10) {
-                ZIcon("lock", size: 16).foregroundStyle(Zen.indigo)
-                VStack(alignment: .leading, spacing: 1) {
-                    (Text("\(L10n.t("backups.keyModeLabel")) ").foregroundColor(Zen.ink)
-                     + Text(L10n.t(custom ? "backups.keyModeCustom" : "backups.keyModeDefault"))
-                        .foregroundColor(Zen.positive))
-                        .font(.zen(12, .medium))
-                    Text(L10n.t(custom ? "backups.keyModeCustomDesc" : "backups.keyModeDefaultDesc"))
-                        .font(.zen(11)).foregroundStyle(Zen.ink3)
+            HStack(alignment: .top, spacing: 10) {
+                ZIcon("lock", size: 16).foregroundStyle(Zen.positive).padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(status?.formatVersion == 2
+                         ? "Vault Format v2 · Argon2id + AES-256-GCM"
+                         : "Legacy Vault v1 (Upgrade Recommended)")
+                        .font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                    HStack(spacing: 6) {
+                        DataIOPill(text: "Master Password", foreground: Zen.positive, background: Zen.positive.opacity(0.12))
+                        if status?.requiresKeyFile == true {
+                            DataIOPill(text: "Key File (.key)", foreground: Zen.indigo, background: Zen.indigo.opacity(0.12))
+                        }
+                        if status?.deviceSlotEnrolled == true {
+                            DataIOPill(text: TouchIDKeychain.methodName, foreground: Zen.positive, background: Zen.positive.opacity(0.12))
+                        }
+                        if status?.slots.contains(where: { $0.kind == "recovery" }) == true {
+                            DataIOPill(text: "Recovery Key", foreground: Zen.warning, background: Zen.warning.opacity(0.12))
+                        }
+                    }
                 }
             }
             .frame(minWidth: 240, maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 8) {
-                DataIOTextField(placeholder: L10n.t("backups.passphrasePlaceholder"),
-                                text: $newPassphrase, secure: true, height: 32, background: Zen.surface, trailingPadding: 10)
-                    .frame(width: 256)
-                    .onSubmit(applyPassphrase)
-                Button(L10n.t(newPassphrase.trimmingCharacters(in: .whitespaces).isEmpty ? "backups.useDefaultKeyBtn" : "backups.setPassphraseBtn"),
-                       action: applyPassphrase)
-                    .buttonStyle(DataIORaisedButtonStyle())
+            Button("Manage Credentials & Keys") {
+                store.selectedTab = .settings
             }
+            .buttonStyle(DataIORaisedButtonStyle())
         }
         .padding(14)
         .background(Zen.app, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
-    }
-
-    private func applyPassphrase() {
-        let trimmed = newPassphrase.trimmingCharacters(in: .whitespacesAndNewlines)
-        store.applyVaultPassphrase(trimmed.isEmpty ? nil : trimmed)
-        newPassphrase = ""
-        center.refresh(store)
     }
 
     private func backupFolderRow(settings: AppSettings) -> some View {
@@ -221,10 +221,20 @@ struct BackupsView: View {
                 Text(L10n.tf("backups.snapshotsListTitle", ["count": center.backups.count]).uppercased())
                     .font(.zen(11, .semibold)).tracking(0.6).foregroundStyle(Zen.ink3)
                 Spacer()
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    Button { showRestoreCreds.toggle() } label: {
+                        Text(showRestoreCreds ? "Hide backup unlock options" : "Foreign / older backup credentials…")
+                            .font(.zen(11)).foregroundStyle(Zen.ink2)
+                    }
+                    .buttonStyle(.plain)
+
                     Button {
                         if let url = DataIOPanels.open(extensions: ["db", "sqlite", "json"]) {
-                            store.restoreBackup(at: url.path)
+                            store.restoreBackup(
+                                at: url.path,
+                                passphrase: restorePassphrase.isEmpty ? nil : restorePassphrase,
+                                keyfileURL: restoreKeyfileURL
+                            )
                             center.refresh(store)
                         }
                     } label: {
@@ -234,6 +244,19 @@ struct BackupsView: View {
                     .buttonStyle(.plain)
                     ZenMiniButton(icon: "arrow.clockwise", size: 14) { center.refresh(store) }
                 }
+            }
+
+            if showRestoreCreds {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Leave empty when restoring backups encrypted with this vault's active key. Enter credentials only for backups using another password or Key File.")
+                        .font(.zen(11)).foregroundStyle(Zen.ink2)
+                    DataIOTextField(placeholder: "Backup passphrase (optional)", text: $restorePassphrase, secure: true,
+                                    height: 30, background: Zen.surface, trailingPadding: 10)
+                    KeyFileSelectorView(keyfileURL: $restoreKeyfileURL, allowGenerate: false, compact: true)
+                }
+                .padding(10)
+                .background(Zen.app, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
             }
 
             if center.backups.isEmpty {
@@ -249,7 +272,13 @@ struct BackupsView: View {
                     VStack(spacing: 0) {
                         ForEach(Array(center.backups.enumerated()), id: \.element.id) { idx, b in
                             if idx > 0 { Rectangle().fill(Zen.line.opacity(0.5)).frame(height: 1) }
-                            BackupRow(entry: b) { store.restoreBackup(at: b.url.path) }
+                            BackupRow(entry: b) {
+                                store.restoreBackup(
+                                    at: b.url.path,
+                                    passphrase: restorePassphrase.isEmpty ? nil : restorePassphrase,
+                                    keyfileURL: restoreKeyfileURL
+                                )
+                            }
                         }
                     }
                 }
@@ -406,8 +435,15 @@ private struct BackupRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(entry.name).font(.zen(12, .medium)).foregroundStyle(Zen.ink).lineLimit(1).truncationMode(.middle)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(entry.name).font(.zen(12, .medium)).foregroundStyle(Zen.ink).lineLimit(1).truncationMode(.middle)
+                    Text(entry.formatVersion == 2 ? "v2 Argon2id" : "v1 Legacy")
+                        .font(.zen(10, .medium))
+                        .foregroundStyle(entry.formatVersion == 2 ? Zen.positive : Zen.warning)
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background((entry.formatVersion == 2 ? Zen.positive : Zen.warning).opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+                }
                 Text("\(DataIOStorage.formatBytes(entry.size)) · \(DataIOStorage.formatTime(entry.modified)) · AES-256-GCM")
                     .font(.zen(10)).monospacedDigit().foregroundStyle(Zen.ink3)
             }

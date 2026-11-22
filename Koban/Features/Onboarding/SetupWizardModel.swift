@@ -10,8 +10,8 @@ final class SetupWizardModel {
     let isFirstRun: Bool
     /// currentSettings.setupCompleted
     let setupCompleted: Bool
-    /// Whether the active database already uses a custom vault passphrase.
-    let hasCustomPassphrase: Bool
+    /// Whether the active database already uses an unlocked Vault v2 configuration.
+    let alreadyConfiguredV2: Bool
     var step: Int
 
     // Step 1: Profile & Currency
@@ -33,25 +33,27 @@ final class SetupWizardModel {
     var skipAccountsSetup = false
     var draftAccounts: [FinancialAccount]
 
-    // Step 4: Encrypted Backup, Login / Passkeys & Behavioral Preferences
+    // Step 4: Vault Format v2 Encryption, Key File & Quick Unlock
     var backupDir: String
     var autoBackup: Bool
     var vaultPassphrase = ""
     var vaultPassphraseConfirm = ""
+    var keyfileURL: URL?
+    var rememberKeyfile = false
+    var createRecoveryKey = true
     var userDisplayName: String
-    var requireLoginOnStartup: Bool
-    var passkeyStatusMsg: String?
-    var isEnrollingPasskey = false
+    var enrollTouchID: Bool
+    var autoLockMinutes: Int
+    var lockOnMinimize: Bool
+    var keyfileStatusMsg: String?
     var confirmBeforeMonthCopy: Bool
     var monthCopyScope: MonthCopyScope
     var autoPromptCopyOnEmptyMonth: Bool
 
-    var auth: AuthConfig
-
-    init(base: LedgerState, auth: AuthConfig, isFirstRun: Bool, hasCustomPassphrase: Bool, initialStep: Int = 1) {
+    init(base: LedgerState, vaultStatus: VaultStatus?, isFirstRun: Bool, initialStep: Int = 1) {
         let s = base.settings
         self.isFirstRun = isFirstRun
-        self.hasCustomPassphrase = hasCustomPassphrase
+        self.alreadyConfiguredV2 = (vaultStatus?.exists == true && vaultStatus?.formatVersion == 2 && vaultStatus?.unlocked == true)
         setupCompleted = !isFirstRun && s.setupCompleted
         step = min(max(initialStep, 1), 4)
         setupMode = s.setupMode
@@ -64,12 +66,13 @@ final class SetupWizardModel {
             ? KobanTemplates.defaultOnboardingAccounts(setupMode: s.setupMode) : base.accounts
         backupDir = s.backupDir
         autoBackup = s.backupDir.isEmpty ? true : s.autoBackup
-        userDisplayName = auth.userDisplayName.isEmpty ? "Koban Owner" : auth.userDisplayName
-        requireLoginOnStartup = auth.enabled
+        userDisplayName = (s.ownerDisplayName ?? "").isEmpty ? "Koban Owner" : s.ownerDisplayName!
+        enrollTouchID = TouchIDKeychain.anyAuthAvailable && (vaultStatus?.deviceSlotEnrolled ?? true)
+        autoLockMinutes = vaultStatus?.authSettings.autoLockMinutes ?? 15
+        lockOnMinimize = vaultStatus?.authSettings.lockOnMinimize ?? false
         confirmBeforeMonthCopy = s.confirmBeforeMonthCopy ?? true
         monthCopyScope = s.monthCopyScope ?? .budgetsAndActuals
         autoPromptCopyOnEmptyMonth = s.autoPromptCopyOnEmptyMonth ?? true
-        self.auth = auth
     }
 
     // MARK: Step 1
@@ -173,34 +176,25 @@ final class SetupWizardModel {
 
     var requiresCustomPassphrase: Bool { !hasCustomPassphrase }
 
-    var trimmedPassphrase: String {
-        vaultPassphrase.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
+    var requiresCustomPassphrase: Bool { !alreadyConfiguredV2 }
 
-    var trimmedPassphraseConfirm: String {
-        vaultPassphraseConfirm.trimmingCharacters(in: .whitespacesAndNewlines)
+    var minPassphraseLen: Int {
+        keyfileURL != nil ? VaultCrypto.minCompositePassphraseLength : VaultCrypto.minPassphraseLength
     }
 
     var passphraseError: String? {
-        if requiresCustomPassphrase {
-            if trimmedPassphrase.isEmpty {
-                return L10n.t("onboarding.s4.errRequired")
-            }
-            if trimmedPassphrase.count < 4 {
-                return L10n.t("onboarding.s4.errMinLength")
-            }
-            if trimmedPassphrase != trimmedPassphraseConfirm {
-                return L10n.t("onboarding.s4.errMismatch")
-            }
+        let hasInput = !vaultPassphrase.isEmpty || !vaultPassphraseConfirm.isEmpty
+        if alreadyConfiguredV2 && !hasInput {
             return nil
         }
-        if !trimmedPassphrase.isEmpty || !trimmedPassphraseConfirm.isEmpty {
-            if trimmedPassphrase.count < 4 {
-                return L10n.t("onboarding.s4.errMinLength")
-            }
-            if trimmedPassphrase != trimmedPassphraseConfirm {
-                return L10n.t("onboarding.s4.errMismatch")
-            }
+        if vaultPassphrase.count < minPassphraseLen {
+            return "Master Password must be at least \(minPassphraseLen) characters."
+        }
+        if vaultPassphrase.trimmingCharacters(in: .whitespacesAndNewlines) != vaultPassphrase {
+            return "Master Password cannot start or end with spaces."
+        }
+        if vaultPassphrase != vaultPassphraseConfirm {
+            return L10n.t("onboarding.s4.errMismatch")
         }
         return nil
     }
@@ -219,46 +213,10 @@ final class SetupWizardModel {
         autoBackup = true
     }
 
-    /// handleEnrollPasskeyInOnboarding — Windows Hello / WebAuthn → Touch ID via the Settings
-    /// enrollment path (TouchIDKeychain + AuthCenter). The vault secret stored for Touch ID unlock is the
-    /// passphrase typed here, else the vault's current custom passphrase.
-    func handleEnrollPasskey(store: LedgerStore) {
-        guard isPassphraseValid else { return }
-        isEnrollingPasskey = true
-        passkeyStatusMsg = nil
-        let trimmedName = userDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanName = trimmedName.isEmpty ? "Koban Owner" : trimmedName
-        let typed = trimmedPassphrase
-        let secret = typed.isEmpty ? store.vault?.passphrase : typed
-        Task { @MainActor in
-            defer { isEnrollingPasskey = false }
-            do {
-                let cred = try await TouchIDKeychain.enroll(account: AuthCenter.shared.account,
-                                                            label: TouchIDKeychain.methodName,
-                                                            vaultSecret: secret, displayName: cleanName)
-                var next = AuthCenter.shared.config
-                next.enabled = true
-                next.userDisplayName = cleanName
-                next.passkeys.append(cred)
-                auth = next
-                requireLoginOnStartup = true
-                store.updateAuthConfig(next)
-                passkeyStatusMsg = "Enrolled \"\(cred.name)\" successfully."
-            } catch let err as LAError where err.code == .userCancel || err.code == .appCancel || err.code == .systemCancel {
-                passkeyStatusMsg = "Passkey registration canceled."
-            } catch {
-                passkeyStatusMsg = "Passkey prompt: \(error.localizedDescription)"
-            }
-        }
-    }
-
     /// handleFinish.
     func finish(store: LedgerStore) {
         guard isPassphraseValid else { return }
-        let pass = trimmedPassphrase
-        let nextAuth = OnboardingSetup.finishAuth(auth, requireLoginOnStartup: requireLoginOnStartup,
-                                                  userDisplayName: userDisplayName, vaultPassphrase: pass)
-        auth = nextAuth
+        let owner = userDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
         store.completeSetup(SetupOptions(
             setupMode: setupMode,
             currency: currency,
@@ -273,10 +231,17 @@ final class SetupWizardModel {
             customItemsByGroup: customItemsByGroup,
             accounts: skipAccountsSetup ? nil : draftAccounts,
             skipAccountsSetup: skipAccountsSetup,
-            vaultPassphrase: pass.isEmpty ? nil : pass,
+            ownerDisplayName: owner.isEmpty ? "Koban Owner" : owner,
+            vaultPassphrase: vaultPassphrase.isEmpty ? nil : vaultPassphrase,
+            keyfileURL: keyfileURL,
+            rememberKeyfile: rememberKeyfile,
+            createRecoveryKey: createRecoveryKey,
+            enrollTouchID: enrollTouchID,
+            autoLockMinutes: autoLockMinutes,
+            lockOnMinimize: lockOnMinimize,
             confirmBeforeMonthCopy: confirmBeforeMonthCopy,
             monthCopyScope: monthCopyScope,
             autoPromptCopyOnEmptyMonth: autoPromptCopyOnEmptyMonth
-        ), auth: nextAuth)
+        ))
     }
 }

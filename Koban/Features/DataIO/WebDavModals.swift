@@ -100,33 +100,40 @@ struct WebDavConflictModal: View {
             }
             .padding(20)
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Button(info.firstLink ? L10n.t("common.cancel") : L10n.t("webdav.conflictDecideLater")) {
                     resolve(info.firstLink ? .cancelFirstLink : .decideLater)
                 }
-                .buttonStyle(.zen(.ghost, height: 34, padding: 14))
+                .buttonStyle(.zen(.ghost, height: 34, padding: 12))
                 .keyboardShortcut(.cancelAction)
-                Spacer(minLength: 8)
+                Spacer(minLength: 6)
+                Button { resolve(.useCloud) } label: {
+                    HStack(spacing: 6) {
+                        if working == .useCloud { DataIOSpinner(size: 14) } else { ZIcon("icloud.and.arrow.down", size: 14) }
+                        Text(L10n.t(info.firstLink ? "webdav.conflictUseCloudFirst" : "webdav.conflictUseCloud"))
+                    }
+                }
+                .buttonStyle(.zen(.outline, height: 34, padding: 12))
                 Button { resolve(.keepLocal) } label: {
                     HStack(spacing: 6) {
                         if working == .keepLocal { DataIOSpinner(size: 14) } else { ZIcon("icloud.and.arrow.up", size: 14) }
                         Text(L10n.t(info.firstLink ? "webdav.conflictUploadLocal" : "webdav.conflictKeepLocal"))
                     }
                 }
-                .buttonStyle(.zen(.outline, height: 34, padding: 14))
-                Button { resolve(.useCloud) } label: {
+                .buttonStyle(.zen(.outline, height: 34, padding: 12))
+                Button { resolve(.merge) } label: {
                     HStack(spacing: 6) {
-                        if working == .useCloud { DataIOSpinner(size: 14) } else { ZIcon("icloud.and.arrow.down", size: 14) }
-                        Text(L10n.t(info.firstLink ? "webdav.conflictUseCloudFirst" : "webdav.conflictUseCloud")).fontWeight(.medium)
+                        if working == .merge { DataIOSpinner(size: 14) } else { ZIcon("arrow.triangle.merge", size: 14) }
+                        Text("Merge Both").fontWeight(.medium)
                     }
                 }
-                .buttonStyle(.zen(.ink, height: 34, padding: 16))
+                .buttonStyle(.zen(.ink, height: 34, padding: 14))
                 .keyboardShortcut(.defaultAction)
             }
             .disabled(working != nil)
             .webDavModalFooter()
         }
-        .frame(width: 560)
+        .frame(width: 640)
     }
 
     private func infoRow(icon: String, label: String, value: String, mono: Bool = false) -> some View {

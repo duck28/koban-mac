@@ -49,6 +49,13 @@ struct RootView: View {
                 .id(modal.id)
             }
         }
+        .overlay {
+            if let recoveryKey = AuthCenter.shared.pendingRecoveryKey {
+                RecoveryKeyOverlayModal(recoveryKey: recoveryKey) {
+                    AuthCenter.shared.pendingRecoveryKey = nil
+                }
+            }
+        }
         .animation(.easeOut(duration: 0.15), value: store.modal?.id)
         .onAppear { DigitKeyNavigation.install(store: store) }
     }

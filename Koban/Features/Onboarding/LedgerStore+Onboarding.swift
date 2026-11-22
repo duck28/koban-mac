@@ -2,14 +2,12 @@ import Foundation
 import Observation
 import SwiftUI
 
-// OWNER: Onboarding — hook used by the TopBar sparkles button, the sidebar "Re-run Setup"
-// and the app menu command. Port of the setup handlers in src/App.tsx.
+// OWNER: Onboarding — Vault Format v2 first-run setup & re-run setup wizard.
 extension LedgerStore {
     static let setupWizardModalId = "setup-wizard"
 
-    /// Re-runs the 4-step wizard over the open ledger (setShowSetupModal(true)).
     func openSetupWizard(step: Int = 1) {
-        guard isReady else { return }
+        guard isUnlockedAndReady else { return }
         openMenu = nil
         presentSetupWizard(model: nil, step: step)
     }
@@ -21,57 +19,88 @@ extension LedgerStore {
         }
     }
 
-    /// The ledger the wizard starts from. On a first run without a stored ledger this is
-    /// createInitialLedgerState('both', 'CHF', '', false), like App.tsx's initial state.
     var setupBaseState: LedgerState {
         if phase == .ready || state.settings.setupCompleted == false { return state }
         return KobanTemplates.initialLedgerState(setupMode: .both, currency: "CHF", backupDir: "", setupCompleted: false)
     }
 
-    /// AuthConfig of the active database (AuthCenter), reloaded so a first run sees this vault's config.
-    func loadSetupAuthConfig() -> AuthConfig {
-        AuthCenter.shared.refresh(store: self, force: true)
-        return AuthCenter.shared.config
-    }
-
-    /// handleCompleteSetup in App.tsx.
-    func completeSetup(_ opts: SetupOptions, auth: AuthConfig) {
-        let wasFirstRun = phase != .ready
+    func completeSetup(_ opts: SetupOptions) {
         let next = OnboardingSetup.apply(opts, to: setupBaseState)
         flushPendingSave()
-        state = next
-        phase = .ready
-        applyAppearance()
-        saveNow()
-        // onUpdateAuthConfig → persists vault_meta.auth_config and refreshes AuthCenter in memory.
-        updateAuthConfig(auth)
-        if wasFirstRun { finishFirstRunActivation() }
 
-        if let pass = opts.vaultPassphrase, !pass.isEmpty {
-            // updateVaultPassphrase(): re-encrypts and keeps the Touch ID Keychain secret in sync.
-            applyVaultPassphrase(pass)
+        let v = vault ?? KobanVault(url: KobanPaths.activeDatabaseURL)
+        wireVaultHooks(v)
+        self.vault = v
+
+        do {
+            let st = try v.status(
+                deviceSlotEnrolled: { TouchIDKeychain.hasDEK(vaultID: $0) },
+                isCustomLocation: KobanPaths.isCustomLocation
+            )
+            var recoveryKeyToShow: String? = nil
+
+            if !st.exists || !st.hasLedgerState {
+                guard let pass = opts.vaultPassphrase, !pass.isEmpty else {
+                    notify("Master Password is required to create Vault Format v2.")
+                    return
+                }
+                let created = try v.createV2(
+                    passphrase: pass,
+                    keyfileURL: opts.keyfileURL,
+                    createRecoveryKey: opts.createRecoveryKey,
+                    initialState: next
+                )
+                recoveryKeyToShow = created.recoveryKey
+                if opts.rememberKeyfile, let kf = opts.keyfileURL, let vid = v.vaultIDB64 {
+                    TouchIDKeychain.rememberKeyfileURL(kf, vaultID: vid)
+                }
+            } else if v.isUnlocked {
+                state = next
+                if let pass = opts.vaultPassphrase, !pass.isEmpty {
+                    try v.changeCredentials(
+                        newPassphrase: pass,
+                        newKeyfileURL: opts.keyfileURL,
+                        rekeyDEK: false,
+                        currentState: next
+                    )
+                    if let vid = v.vaultIDB64 {
+                        TouchIDKeychain.rememberKeyfileURL(opts.rememberKeyfile ? opts.keyfileURL : nil, vaultID: vid)
+                    }
+                } else {
+                    try v.save(next, forceOverwrite: true)
+                }
+            }
+
+            try? v.saveAuthSettings(
+                VaultAuthSettings(
+                    autoPromptDevice: true,
+                    autoLockMinutes: opts.autoLockMinutes,
+                    lockOnMinimize: opts.lockOnMinimize
+                )
+            )
+
+            finishUnlock(loaded: DeviceSettings.applyBackupDir(to: next), greet: false)
+            if let recoveryKeyToShow {
+                AuthCenter.shared.pendingRecoveryKey = recoveryKeyToShow
+            }
+            if opts.enrollTouchID, TouchIDKeychain.anyAuthAvailable,
+               let vid = v.vaultIDB64, !TouchIDKeychain.hasDEK(vaultID: vid) {
+                Task { @MainActor in
+                    try? await self.enrollTouchID()
+                }
+            }
+
+            dismissModal()
+            notify(OnboardingSetup.completionMessage(skippedAccounts: opts.skipAccountsSetup))
+        } catch {
+            notify("Vault setup failed: \(DataIOMessages.text(error))")
         }
-
-        dismissModal()
-        notify(OnboardingSetup.completionMessage(skippedAccounts: opts.skipAccountsSetup))
     }
 
-    /// The post-load hooks that openVault runs for a stored ledger (language, personalization,
-    /// auto-lock monitor). No lock: Windows doesn't lock right after finishing setup.
-    fileprivate func finishFirstRunActivation() {
-        // didLaunchCheck = true makes shouldLockAfterLoad skip the launch lock decision.
-        AuthCenter.shared.didLaunchCheck = true
-        _ = shouldLockAfterLoad()
-    }
+    // MARK: - Import from the wizard
 
-    // MARK: - Import from the wizard (onOpenImportModal)
-
-    /// "Import Existing Data…" in the wizard header. On Windows the Import modal opens on top of the
-    /// wizard: committing an import replaces the ledger (setupCompleted: true) and closes the wizard,
-    /// cancelling returns to the wizard where it was.
     func openImportFromSetupWizard(model: SetupWizardModel) {
         if model.isFirstRun && phase == .needsSetup && state.settings.setupCompleted {
-            // No stored ledger yet: import into App.tsx's initial ledger, as Windows does.
             state = setupBaseState
         }
         let before = state
@@ -85,29 +114,20 @@ extension LedgerStore {
                                  reopenWizard: wizardModalBefore)
     }
 
-    /// Called when the import modal opened from the wizard has closed.
     fileprivate func setupImportFinished(before: LedgerState, model: SetupWizardModel, reopenWizard: Bool) {
         let committed = state != before || (model.isFirstRun && phase != .needsSetup)
         if committed {
-            if phase == .needsSetup {
-                // handleCommitImport: proposedState has setupCompleted: true → leave setup.
-                state.settings.setupCompleted = true
-                phase = .ready
-                applyAppearance()
-                saveNow()
-                finishFirstRunActivation()
-            } else if phase == .ready {
+            if phase == .ready {
                 if !state.settings.setupCompleted { update { $0.settings.setupCompleted = true } }
                 saveNow()
             }
             if modal?.id == Self.setupWizardModalId { dismissModal() }
-        } else if reopenWizard, modal == nil, isReady {
+        } else if reopenWizard, modal == nil, isUnlockedAndReady {
             presentSetupWizard(model: model, step: model.step)
         }
     }
 }
 
-/// Watches the store's modal slot (without a mounted view) until the Import modal closes.
 @MainActor
 enum SetupImportWatcher {
     static func watch(store: LedgerStore, importModalId: String, before: LedgerState,

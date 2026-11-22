@@ -196,6 +196,7 @@ struct AppSettings: Codable, Hashable, Sendable {
     var language: String?
     /// Automatically check GitHub Releases for app updates on startup.
     var autoCheckUpdates: Bool?
+    var ownerDisplayName: String? = nil
     var webdav: WebDavConfig?
 }
 

@@ -5,16 +5,14 @@ struct BackupEntry: Identifiable, Hashable, Sendable {
     var url: URL
     var size: Int64
     var modified: Date
+    var formatVersion: Int = 2
 
     var id: URL { url }
 }
 
-/// Port of perform_backup_to_dir / list_backups in lib.rs. Backups are plain file copies
-/// of the (already encrypted) database, so they stay encrypted at rest and remain
-/// restorable on either platform.
+/// Backups are byte-for-byte file copies of the encrypted `koban.db`,
+/// so they remain AES-256-GCM encrypted at rest across Windows and macOS.
 enum BackupManager {
-    /// Copies the DB to `koban-latest.db` plus a daily (`koban-daily-<day>.db`) or timestamped
-    /// (`koban-backup-<secs>.db`) snapshot, then prunes snapshots beyond `maxBackups`.
     @discardableResult
     static func backup(database: URL, to directory: URL, timestamped: Bool, maxBackups: Int) throws -> URL {
         let fm = FileManager.default
@@ -56,11 +54,13 @@ enum BackupManager {
             guard include(url.lastPathComponent),
                   let values = try? url.resourceValues(forKeys: Set(keys)),
                   values.isRegularFile == true else { return nil }
+            let ver = (try? KobanVault.detectFormatVersion(at: url)) ?? 1
             return BackupEntry(
                 name: url.lastPathComponent,
                 url: url,
                 size: Int64(values.fileSize ?? 0),
-                modified: values.contentModificationDate ?? .distantPast
+                modified: values.contentModificationDate ?? .distantPast,
+                formatVersion: ver
             )
         }
         .sorted { $0.modified > $1.modified }
@@ -68,9 +68,14 @@ enum BackupManager {
 
     private static func replaceCopy(from source: URL, to destination: URL) throws {
         let fm = FileManager.default
+        let tempURL = destination.deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.lastPathComponent).tmp-\(UUID().uuidString)")
+        try? fm.removeItem(at: tempURL)
+        try fm.copyItem(at: source, to: tempURL)
         if fm.fileExists(atPath: destination.path) {
-            try fm.removeItem(at: destination)
+            _ = try fm.replaceItemAt(destination, withItemAt: tempURL, backupItemName: nil, options: .usingNewMetadataOnly)
+        } else {
+            try fm.moveItem(at: tempURL, to: destination)
         }
-        try fm.copyItem(at: source, to: destination)
     }
 }

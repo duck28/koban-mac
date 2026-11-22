@@ -7,6 +7,7 @@ struct ImportDataModal: View {
     @State private var importKind: ImportKind = .budgetSheet
     @State private var targetMode: LedgerMode
     @State private var passphrase = ""
+    @State private var keyfileURL: URL?
     @State private var isBusy = false
     @State private var previewData: ImportPreviewData?
     @State private var excluded = Set<String>()
@@ -141,6 +142,7 @@ struct ImportDataModal: View {
                         .fixedSize(horizontal: false, vertical: true)
                     DataIOTextField(placeholder: L10n.t("import.optionalPassphrasePlaceholder"), text: $passphrase, secure: true,
                                     height: 32, background: Zen.surface, trailingPadding: 10)
+                    KeyFileSelectorView(keyfileURL: $keyfileURL, allowGenerate: false, compact: true)
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -247,7 +249,8 @@ struct ImportDataModal: View {
         defer { isBusy = false }
         let pass = passphrase.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let prepared = store.prepareImport(kind: importKind, targetMode: targetMode,
-                                                 passphrase: pass.isEmpty ? nil : pass) else { return }
+                                                 passphrase: pass.isEmpty ? nil : pass,
+                                                 keyfileURL: keyfileURL) else { return }
         if confirmAndPreview {
             excluded = []
             previewData = prepared
