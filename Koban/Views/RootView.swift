@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct RootView: View {
@@ -105,6 +106,42 @@ struct MainView: View {
                 .background(Zen.positive.opacity(0.12))
                 .overlay(alignment: .bottom) { Rectangle().fill(Zen.positive.opacity(0.3)).frame(height: 1) }
             }
+            if !DataIOCenter.shared.importBannerDismissed,
+               let firstPending = DataIOCenter.shared.pendingImportFiles.first {
+                let count = DataIOCenter.shared.pendingImportFiles.count
+                HStack(spacing: 12) {
+                    HStack(spacing: 8) {
+                        ZIcon("tray.and.arrow.down", size: 14).foregroundStyle(Zen.indigo)
+                        Text("\(count) new bank statement\(count == 1 ? "" : "s") detected in your watched folder.")
+                            .font(.zen(12, .medium))
+                            .foregroundStyle(Zen.ink)
+                        Text(firstPending.name)
+                            .font(.zen(11))
+                            .foregroundStyle(Zen.ink3)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Button {
+                        store.presentImportModal(initialPreview: nil, initialPendingFileURL: firstPending.url)
+                    } label: {
+                        Text("Review")
+                            .font(.zen(11, .medium))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .frame(height: 28)
+                            .background(Zen.indigo, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+
+                    ZenMiniButton(icon: "xmark", size: 14, tint: Zen.ink3, hoverTint: Zen.ink, help: L10n.t("common.close")) {
+                        DataIOCenter.shared.importBannerDismissed = true
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Zen.indigo.opacity(0.10))
+                .overlay(alignment: .bottom) { Rectangle().fill(Zen.indigo.opacity(0.25)).frame(height: 1) }
+            }
             HStack(spacing: 0) {
                 if store.isSidebarOpen {
                     SidebarView()
@@ -127,6 +164,9 @@ struct MainView: View {
             .zIndex(1)
         }
         .onExitCommand { store.openMenu = nil }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            DataIOCenter.shared.refreshImportWatchFolder()
+        }
         // Debug snapshots: KOBAN_SNAPSHOT_ACTION=setup-wizard[-<step>] opens the re-run wizard.
         .onReceive(NotificationCenter.default.publisher(for: .kobanDebugAction)) { note in
             guard let name = note.userInfo?["name"] as? String, name.hasPrefix("setup-wizard") else { return }

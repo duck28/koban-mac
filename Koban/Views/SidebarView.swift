@@ -82,14 +82,12 @@ private struct NavPanel: View {
             VStack(spacing: 10) {
                 MonthSnapshotCard(summary: summary, netWorth: netWorth)
                 BackupStatusCard()
-                Button { store.openSetupWizard() } label: {
-                    HStack(spacing: 6) {
-                        ZIcon("sparkles", size: 12).foregroundStyle(Zen.accent)
-                        Text(L10n.t("sidebar.rerunSetup")).font(.zen(11))
-                    }
+                Text("Koban v\(UpdateChecker.shared.currentVersion)")
+                    .font(.zen(11))
+                    .zenAmount()
+                    .foregroundStyle(Zen.ink2.opacity(0.85))
                     .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.zen(.ghost, height: 28, radius: 6, padding: 10, fontSize: 11))
+                    .frame(height: 28)
             }
             .padding(.top, 12)
             .padding(.horizontal, 12)
@@ -253,7 +251,7 @@ private struct BackupStatusCard: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if !dir.isEmpty {
-                    ZenMiniButton(icon: "arrow.up.right.square", size: 12, help: L10n.t("sidebar.revealBackupMac")) {
+                    ZenMiniButton(icon: "arrow.up.right.square", size: 12, tint: Zen.ink2.opacity(0.85), help: L10n.t("sidebar.revealBackupMac")) {
                         store.revealBackupFolder()
                     }
                 }

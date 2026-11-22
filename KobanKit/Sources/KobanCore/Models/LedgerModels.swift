@@ -105,6 +105,131 @@ struct TransactionItem: Codable, Identifiable, Hashable, Sendable {
     var status: TransactionStatus?
     var notes: String?
     var recurringId: String?
+    var externalId: String? = nil
+    var importFingerprint: String? = nil
+    var rawDescription: String? = nil
+    var transferPeerId: String? = nil
+}
+
+enum BankDateFormat: String, Codable, CaseIterable, Sendable {
+    case auto
+    case iso = "YYYY-MM-DD"
+    case chDot = "DD.MM.YYYY"
+    case euSlash = "DD/MM/YYYY"
+    case usSlash = "MM/DD/YYYY"
+    case compact = "YYYYMMDD"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = BankDateFormat(rawValue: raw) ?? .auto
+    }
+}
+
+enum BankAmountMode: String, Codable, CaseIterable, Sendable {
+    case signed
+    case splitDebitCredit = "split_debit_credit"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = BankAmountMode(rawValue: raw) ?? .signed
+    }
+}
+
+enum BankDecimalSeparator: String, Codable, CaseIterable, Sendable {
+    case auto
+    case dot = "."
+    case comma = ","
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = BankDecimalSeparator(rawValue: raw) ?? .auto
+    }
+}
+
+struct BankImportProfile: Codable, Identifiable, Hashable, Sendable {
+    var id: String
+    var name: String
+    var accountId: String?
+    var defaultMode: LedgerMode?
+    var headerFingerprint: [String]
+    var delimiter: String?
+    var dateColumn: String
+    var dateFormat: BankDateFormat
+    var amountMode: BankAmountMode
+    var amountColumn: String?
+    var debitColumn: String?
+    var creditColumn: String?
+    var invertSign: Bool
+    var decimalSeparator: BankDecimalSeparator
+    var descriptionColumns: [String]
+    var payeeColumn: String?
+    var referenceColumn: String?
+    var currencyColumn: String?
+    var skipRows: Int?
+    var updatedAt: String
+}
+
+enum ImportRuleDirection: String, Codable, CaseIterable, Sendable {
+    case any, income, expense
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = ImportRuleDirection(rawValue: raw) ?? .any
+    }
+}
+
+enum ImportRuleMatchField: String, Codable, CaseIterable, Sendable {
+    case any, payee, description, iban
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = ImportRuleMatchField(rawValue: raw) ?? .any
+    }
+}
+
+enum ImportRuleMatchType: String, Codable, CaseIterable, Sendable {
+    case contains
+    case startsWith = "starts_with"
+    case exact
+    case regex
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = ImportRuleMatchType(rawValue: raw) ?? .contains
+    }
+}
+
+struct ImportRule: Codable, Identifiable, Hashable, Sendable {
+    var id: String
+    var name: String
+    var enabled: Bool
+    var priority: Int
+    var accountId: String?
+    var direction: ImportRuleDirection?
+    var matchField: ImportRuleMatchField
+    var matchType: ImportRuleMatchType
+    var pattern: String
+    var minAmount: Double?
+    var maxAmount: Double?
+    var setCategoryId: String
+    var setMode: LedgerMode?
+    var setPayee: String?
+    var setClient: String?
+    var setTaxRate: Double?
+    var setDeductiblePct: Double?
+    var markAsTransfer: Bool?
+    var createdAt: String
+    var updatedAt: String
+}
+
+struct PendingImportFile: Identifiable, Hashable, Sendable {
+    var name: String
+    var url: URL
+    var size: Int64
+    var modified: Date
+    var extensionName: String
+    var id: String { url.path }
+    var path: String { url.path }
 }
 
 struct RecurringRule: Codable, Identifiable, Hashable, Sendable {
@@ -226,6 +351,8 @@ struct LedgerState: Codable, Hashable, Sendable {
     var accounts: [FinancialAccount]
     var netWorthSnapshots: [NetWorthSnapshot]
     var yearlyPlanItems: [YearlyPlanItem]?
+    var importProfiles: [BankImportProfile]? = nil
+    var importRules: [ImportRule]? = nil
 }
 
 // Lenient decoding: older vaults may lack newer collections (the Rust backend
@@ -234,7 +361,8 @@ struct LedgerState: Codable, Hashable, Sendable {
 extension LedgerState {
     enum CodingKeys: String, CodingKey {
         case version, settings, groups, categories, monthlyBudgets, transactions,
-             recurringRules, savingsGoals, accounts, netWorthSnapshots, yearlyPlanItems
+             recurringRules, savingsGoals, accounts, netWorthSnapshots, yearlyPlanItems,
+             importProfiles, importRules
     }
 
     init(from decoder: Decoder) throws {
@@ -255,6 +383,8 @@ extension LedgerState {
         accounts = try c.decodeIfPresent([FinancialAccount].self, forKey: .accounts) ?? []
         netWorthSnapshots = try c.decodeIfPresent([NetWorthSnapshot].self, forKey: .netWorthSnapshots) ?? []
         yearlyPlanItems = try c.decodeIfPresent([YearlyPlanItem].self, forKey: .yearlyPlanItems)
+        importProfiles = try c.decodeIfPresent([BankImportProfile].self, forKey: .importProfiles)
+        importRules = try c.decodeIfPresent([ImportRule].self, forKey: .importRules)
     }
 }
 

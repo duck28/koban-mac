@@ -14,7 +14,9 @@ struct RecurringView: View {
 
     static var frequencyOptions: [(RecurrenceFrequency, String)] {
         [
+            (.biweekly, L10n.t("recurring.freqBiweekly")),
             (.monthly, L10n.t("recurring.freqMonthly")),
+            (.bimonthly, L10n.t("recurring.freqBimonthly")),
             (.quarterly, L10n.t("recurring.freqQuarterly")),
             (.yearly, L10n.t("recurring.freqYearly")),
         ]
@@ -272,7 +274,7 @@ private struct RecurringRuleRow: View {
         HStack(spacing: 12) {
             Button { store.toggleRecurringRule(rule.id) } label: {
                 ZIcon("checkmark.circle", size: 16, weight: .regular)
-                    .foregroundStyle(rule.active ? Zen.positive : Zen.ink3)
+                    .foregroundStyle(rule.active ? Zen.positive : Zen.ink2.opacity(0.65))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -374,7 +376,7 @@ private struct DeleteRuleButton: View {
     var body: some View {
         Button(action: action) {
             ZIcon("trash", size: 14, weight: .regular)
-                .foregroundStyle(hovering ? Zen.accent : Zen.ink3)
+                .foregroundStyle(hovering ? Zen.accent : Zen.ink2.opacity(0.85))
                 .padding(6)
                 .background(hovering ? Zen.raised : .clear, in: RoundedRectangle(cornerRadius: 8))
                 .contentShape(Rectangle())

@@ -6,6 +6,8 @@ struct ImportDataModal: View {
     @Environment(LedgerStore.self) private var store
     @State private var importKind: ImportKind = .budgetSheet
     @State private var targetMode: LedgerMode
+    @State private var selectedAccountId = ""
+    @State private var selectedBankId = "auto"
     @State private var passphrase = ""
     @State private var keyfileURL: URL?
     @State private var isBusy = false
@@ -13,9 +15,15 @@ struct ImportDataModal: View {
     @State private var excluded = Set<String>()
     @State private var hideZeroPreviewRows = false
 
-    init(initialPreview: ImportPreviewData?, defaultMode: LedgerMode? = nil) {
+    let initialPendingFileURL: URL?
+    @State private var didConsumePendingFile = false
+
+    init(initialPreview: ImportPreviewData?, defaultMode: LedgerMode? = nil, initialPendingFileURL: URL? = nil) {
+        self.initialPendingFileURL = initialPendingFileURL
         _previewData = State(initialValue: initialPreview)
+        _importKind = State(initialValue: initialPendingFileURL != nil ? .transactions : (initialPreview?.kind ?? .budgetSheet))
         _targetMode = State(initialValue: initialPreview?.targetMode ?? defaultMode ?? .home)
+        _selectedAccountId = State(initialValue: initialPreview?.accountId ?? "")
         _didSetDefaultMode = State(initialValue: initialPreview != nil || defaultMode != nil)
     }
 
@@ -34,12 +42,18 @@ struct ImportDataModal: View {
                 sourceStep
             }
         }
-        .frame(width: previewData == nil ? 576 : 896)
+        .frame(width: previewData == nil ? 576 : (previewData?.bankParseResult != nil ? 1040 : 896))
         .background(Zen.surface)
         .onAppear {
             if !didSetDefaultMode {
                 targetMode = store.importDefaultMode
                 didSetDefaultMode = true
+            }
+            DataIOCenter.shared.refreshImportWatchFolder()
+            if !didConsumePendingFile, let pendingURL = initialPendingFileURL, previewData == nil {
+                didConsumePendingFile = true
+                importKind = .transactions
+                reviewWatchedURL(pendingURL)
             }
         }
     }
@@ -96,8 +110,8 @@ struct ImportDataModal: View {
                        subtitle: L10n.t("import.budgetSheetDesc"),
                        formats: ".xlsx, .xls, .csv", icon: "tablecells", accent: Zen.positive),
             SourceCard(id: .transactions, title: L10n.t("import.transactions"),
-                       subtitle: L10n.t("import.transactionsDesc"),
-                       formats: ".csv, .xlsx, .xls", icon: "list.bullet.rectangle.portrait", accent: Zen.indigo),
+                       subtitle: "Import bank or card statements (camt.053 XML, OFX/QFX, CSV, or Excel) with duplicate detection and smart categorization.",
+                       formats: ".xml, .ofx, .csv, .xlsx", icon: "list.bullet.rectangle.portrait", accent: Zen.indigo),
             SourceCard(id: .databaseBackup, title: L10n.t("import.backup"),
                        subtitle: L10n.t("import.backupDesc"),
                        formats: ".db, .sqlite, .json", icon: "cylinder.split.1x2", accent: Zen.accent),
@@ -114,19 +128,122 @@ struct ImportDataModal: View {
             }
 
             if importKind != .databaseBackup {
-                HStack {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(L10n.tf("import.targetWorkspace", ["month": monthKey])).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
-                        Text(L10n.t("import.targetWorkspaceDesc")).font(.zen(11)).foregroundStyle(Zen.ink3)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(L10n.tf("import.targetWorkspace", ["month": monthKey])).font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                            Text(L10n.t("import.targetWorkspaceDesc")).font(.zen(11)).foregroundStyle(Zen.ink3)
+                        }
+                        Spacer()
+                        HStack(spacing: 0) {
+                            segment(L10n.t("onboarding.home"), .home)
+                            segment(L10n.t("workspace.freelancer"), .freelancer)
+                        }
+                        .padding(2)
+                        .background(Zen.raised, in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
                     }
-                    Spacer()
-                    HStack(spacing: 0) {
-                        segment(L10n.t("onboarding.home"), .home)
-                        segment(L10n.t("workspace.freelancer"), .freelancer)
+
+                    if importKind == .transactions {
+                        Rectangle().fill(Zen.line).frame(height: 1)
+                        HStack {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Target Bank / Card Account").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                                Text("Tracks balances and scopes saved rules or duplicates.").font(.zen(11)).foregroundStyle(Zen.ink3)
+                            }
+                            Spacer()
+                            Picker("", selection: $selectedAccountId) {
+                                Text("Unlinked / Specify later").tag("")
+                                ForEach(store.state.accounts) { acc in
+                                    Text("\(L10n.accountName(acc)) (\(acc.mode == .freelancer ? "Biz" : "Home"))").tag(acc.id)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 220)
+                            .onChange(of: selectedAccountId) { _, newId in
+                                if let acc = store.state.accounts.first(where: { $0.id == newId }) {
+                                    targetMode = acc.mode
+                                }
+                                if let scoped = (store.state.importProfiles ?? []).first(where: { !newId.isEmpty && $0.accountId == newId }) {
+                                    selectedBankId = scoped.id
+                                }
+                            }
+                        }
+
+                        Rectangle().fill(Zen.line).frame(height: 1)
+                        HStack {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Bank / Statement Format").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                                Text("Auto-detects headers or forces a specific bank CSV layout.").font(.zen(11)).foregroundStyle(Zen.ink3)
+                            }
+                            Spacer()
+                            Picker("", selection: $selectedBankId) {
+                                Text("Auto-detect (recommended)").tag("auto")
+                                let saved = store.state.importProfiles ?? []
+                                if !saved.isEmpty {
+                                    Section("Saved Profiles") {
+                                        ForEach(saved) { prof in
+                                            Text(prof.name).tag(prof.id)
+                                        }
+                                    }
+                                }
+                                Section("Supported Banks") {
+                                    ForEach(BankImport.builtinProfiles) { preset in
+                                        Text(preset.name).tag(preset.id)
+                                    }
+                                }
+                                Text("Custom / Map Columns Manually…").tag("custom")
+                            }
+                            .labelsHidden()
+                            .frame(width: 220)
+                        }
+
+                        Rectangle().fill(Zen.line).frame(height: 1)
+                        HStack(spacing: 8) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Watched Statement Folder").font(.zen(12, .medium)).foregroundStyle(Zen.ink)
+                                let dir = DeviceSettings.importWatchDir
+                                Text(dir.isEmpty ? "Not configured — choose a folder to auto-detect dropped statements." : dir)
+                                    .font(.zen(11)).foregroundStyle(Zen.ink3).lineLimit(1)
+                            }
+                            Spacer()
+                            if !DeviceSettings.importWatchDir.isEmpty {
+                                Button("Clear") { store.clearImportWatchFolder() }
+                                    .buttonStyle(DataIORaisedButtonStyle(height: 26, padding: 10, fontSize: 11))
+                            }
+                            Button("Choose Folder…") { store.pickImportWatchFolder() }
+                                .buttonStyle(DataIORaisedButtonStyle(height: 26, padding: 10, fontSize: 11))
+                            Button { store.presentImportRulesModal() } label: {
+                                HStack(spacing: 4) {
+                                    ZIcon("tag", size: 11)
+                                    Text("Rules & Profiles")
+                                }
+                            }
+                            .buttonStyle(DataIORaisedButtonStyle(height: 26, padding: 10, fontSize: 11))
+                        }
+
+                        let pending = DataIOCenter.shared.pendingImportFiles
+                        if !pending.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("READY TO REVIEW (\(pending.count))")
+                                    .font(.zen(10, .semibold)).tracking(0.6).foregroundStyle(Zen.indigo)
+                                ForEach(pending.prefix(4)) { file in
+                                    HStack(spacing: 8) {
+                                        ZIcon("doc.text", size: 12).foregroundStyle(Zen.indigo)
+                                        Text(file.name).font(.zen(11, .medium)).foregroundStyle(Zen.ink).lineLimit(1)
+                                        Spacer()
+                                        Button("Review") { reviewWatchedURL(file.url) }
+                                            .buttonStyle(DataIOInkButtonStyle(height: 24, padding: 10, fontSize: 10))
+                                            .disabled(isBusy)
+                                    }
+                                    .padding(.horizontal, 8).padding(.vertical, 5)
+                                    .background(Zen.surface, in: RoundedRectangle(cornerRadius: 6))
+                                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Zen.line, lineWidth: 1))
+                                }
+                            }
+                            .padding(.top, 2)
+                        }
                     }
-                    .padding(2)
-                    .background(Zen.raised, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
                 }
                 .padding(14)
                 .background(Zen.app, in: RoundedRectangle(cornerRadius: 12))
@@ -244,14 +361,27 @@ struct ImportDataModal: View {
         .buttonStyle(.plain)
     }
 
+    private func reviewWatchedURL(_ url: URL) {
+        isBusy = true
+        defer { isBusy = false }
+        let accId = selectedAccountId.isEmpty ? nil : selectedAccountId
+        if let prepared = store.prepareBankImport(url: url, targetMode: targetMode, accountId: accId, isWatchedFile: true, selectedProfileId: selectedBankId) {
+            excluded = []
+            previewData = prepared
+        }
+    }
+
     private func selectFile() {
         isBusy = true
         defer { isBusy = false }
         let pass = passphrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        let accId = selectedAccountId.isEmpty ? nil : selectedAccountId
         guard let prepared = store.prepareImport(kind: importKind, targetMode: targetMode,
                                                  passphrase: pass.isEmpty ? nil : pass,
-                                                 keyfileURL: keyfileURL) else { return }
-        if confirmAndPreview {
+                                                 keyfileURL: keyfileURL,
+                                                 accountId: accId,
+                                                 selectedProfileId: selectedBankId) else { return }
+        if confirmAndPreview || prepared.bankParseResult != nil {
             excluded = []
             previewData = prepared
         } else {
@@ -303,46 +433,76 @@ struct ImportDataModal: View {
         if excluded.contains(id) { excluded.remove(id) } else { excluded.insert(id) }
     }
 
+    @ViewBuilder
     private func previewStep(_ p: ImportPreviewData) -> some View {
-        let bm = budgetMetrics(p)
-        let tm = txMetrics(p)
-        return VStack(alignment: .leading, spacing: 16) {
-            contextBanner(p, bm)
-
-            switch p.kind {
-            case .budgetSheet: budgetPreview(p, bm)
-            case .transactions: transactionPreview(p, tm)
-            case .databaseBackup: backupPreview(p)
-            }
-
-            HStack(spacing: 12) {
-                Button {
+        if p.kind == .transactions, let parseResult = p.bankParseResult {
+            BankImportReviewView(
+                parseResult: parseResult,
+                targetMode: p.targetMode,
+                accountId: p.accountId,
+                watchedFileURL: p.watchedFileURL,
+                isBusy: isBusy,
+                onBackToSource: {
                     previewData = nil
                     excluded = []
-                } label: {
-                    HStack(spacing: 6) { ZIcon("arrow.left", size: 14); Text(L10n.t("import.chooseOther")) }
+                },
+                onCancel: closeAll,
+                onComplete: { stagedRows, savedProfile, savedRules, archiveWatchedFile in
+                    isBusy = true
+                    store.commitBankImport(
+                        preview: p,
+                        stagedRows: stagedRows,
+                        savedProfile: savedProfile,
+                        savedRules: savedRules,
+                        archiveWatchedFile: archiveWatchedFile
+                    )
+                    isBusy = false
+                    previewData = nil
+                    excluded = []
                 }
-                .buttonStyle(DataIORaisedButtonStyle(height: 36, padding: 14, background: Zen.surface))
-                .disabled(isBusy)
+            )
+            .padding(24)
+        } else {
+            let bm = budgetMetrics(p)
+            let tm = txMetrics(p)
+            VStack(alignment: .leading, spacing: 16) {
+                contextBanner(p, bm)
 
-                Spacer()
+                switch p.kind {
+                case .budgetSheet: budgetPreview(p, bm)
+                case .transactions: transactionPreview(p, tm)
+                case .databaseBackup: backupPreview(p)
+                }
 
-                Button(L10n.t("import.cancel"), action: closeAll)
-                    .buttonStyle(.zen(.ghost, height: 36, padding: 16))
-                    .disabled(isBusy)
-                Button { confirm(p, budgetSelected: bm.selectedCount, txSelected: tm.selectedCount) } label: {
-                    HStack(spacing: 8) {
-                        ZIcon("checkmark.circle", size: 16)
-                        Text(isBusy ? L10n.t("import.completing") : "\(L10n.t("import.confirm")) (\(confirmCountLabel(p, bm, tm)))")
+                HStack(spacing: 12) {
+                    Button {
+                        previewData = nil
+                        excluded = []
+                    } label: {
+                        HStack(spacing: 6) { ZIcon("arrow.left", size: 14); Text(L10n.t("import.chooseOther")) }
                     }
+                    .buttonStyle(DataIORaisedButtonStyle(height: 36, padding: 14, background: Zen.surface))
+                    .disabled(isBusy)
+
+                    Spacer()
+
+                    Button(L10n.t("import.cancel"), action: closeAll)
+                        .buttonStyle(.zen(.ghost, height: 36, padding: 16))
+                        .disabled(isBusy)
+                    Button { confirm(p, budgetSelected: bm.selectedCount, txSelected: tm.selectedCount) } label: {
+                        HStack(spacing: 8) {
+                            ZIcon("checkmark.circle", size: 16)
+                            Text(isBusy ? L10n.t("import.completing") : "\(L10n.t("import.confirm")) (\(confirmCountLabel(p, bm, tm)))")
+                        }
+                    }
+                    .buttonStyle(DataIOInkButtonStyle(height: 36, padding: 20))
+                    .disabled(isBusy)
                 }
-                .buttonStyle(DataIOInkButtonStyle(height: 36, padding: 20))
-                .disabled(isBusy)
+                .padding(.top, 12)
+                .overlay(alignment: .top) { Rectangle().fill(Zen.line).frame(height: 1) }
             }
-            .padding(.top, 12)
-            .overlay(alignment: .top) { Rectangle().fill(Zen.line).frame(height: 1) }
+            .padding(24)
         }
-        .padding(24)
     }
 
     private func confirmCountLabel(_ p: ImportPreviewData, _ bm: BudgetMetrics, _ tm: TxMetrics) -> String {

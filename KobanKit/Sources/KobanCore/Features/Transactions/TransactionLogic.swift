@@ -147,13 +147,45 @@ extension LedgerState {
 // MARK: - Recurring rules
 
 extension RecurringRule {
-    /// Monthly equivalent used by the summary banner (quarterly / 3, yearly / 12).
+    /// Monthly equivalent used by the summary banner (biweekly * 26 / 12, bimonthly / 2, quarterly / 3, yearly / 12).
     var monthlyEquivalent: Double {
         switch frequency {
+        case .biweekly: return (amount * 26) / 12
         case .monthly: return amount
+        case .bimonthly: return amount / 2
         case .quarterly: return amount / 3
         case .yearly: return amount / 12
         }
+    }
+
+    /// Annual equivalent used by Yearly Planner seeding.
+    var annualEquivalent: Double {
+        switch frequency {
+        case .biweekly: return amount * 26
+        case .monthly: return amount * 12
+        case .bimonthly: return amount * 6
+        case .quarterly: return amount * 4
+        case .yearly: return amount
+        }
+    }
+
+    /// Month spacing between postings (>1 for bimonthly, quarterly, yearly).
+    var monthInterval: Int {
+        switch frequency {
+        case .biweekly, .monthly: return 1
+        case .bimonthly: return 2
+        case .quarterly: return 3
+        case .yearly: return 12
+        }
+    }
+
+    /// Days in the month this rule posts on (biweekly yields two dates 14 days apart within 1...28).
+    var postingDaysInMonth: [Int] {
+        let d = min(28, max(1, dayOfMonth))
+        if frequency == .biweekly {
+            return d <= 14 ? [d, d + 14] : [d - 14, d]
+        }
+        return [d]
     }
 
     /// Day input clamp: Math.min(28, Math.max(1, parseInt(v, 10) || 1)).
@@ -161,6 +193,13 @@ extension RecurringRule {
         let parsed = JSNumber.parseInt(text) ?? 0
         return min(28, max(1, parsed == 0 ? 1 : parsed))
     }
+}
+
+private func parseMonthIndex(_ monthKey: String) -> Int? {
+    let parts = monthKey.split(separator: "-")
+    guard parts.count == 2, let year = Int(parts[0]), let month = Int(parts[1]),
+          (1...12).contains(month) else { return nil }
+    return year * 12 + (month - 1)
 }
 
 /// Partial<RecurringRule> as used by RecurringView's inline editors.
@@ -210,7 +249,7 @@ extension LedgerState {
     }
 
     /// handleUpdateRecurringRule: applies the patch; a positive amount also seeds the category's
-    /// default budget and this month's planned budget when those are still 0.
+    /// default budget and this month's planned budget (in monthly equivalent) when those are still 0.
     mutating func updateRecurringRule(_ id: String, patch: RecurringRulePatch, monthKey: String) {
         guard let rIdx = recurringRules.firstIndex(where: { $0.id == id }) else { return }
         let target = recurringRules[rIdx]
@@ -219,13 +258,14 @@ extension LedgerState {
         if let a = patch.amount { recurringRules[rIdx].amount = a }
 
         if let amount = patch.amount, amount > 0 {
+            let eq = (recurringRules[rIdx].monthlyEquivalent * 100).rounded() / 100
             if let cIdx = categories.firstIndex(where: { $0.id == target.categoryId }),
                categories[cIdx].defaultBudget == 0 {
-                categories[cIdx].defaultBudget = amount
+                categories[cIdx].defaultBudget = eq
             }
             if let mIdx = monthlyBudgets.firstIndex(where: { $0.monthKey == monthKey && $0.categoryId == target.categoryId }),
                monthlyBudgets[mIdx].budget == 0 {
-                monthlyBudgets[mIdx].budget = amount
+                monthlyBudgets[mIdx].budget = eq
             }
         }
     }
@@ -248,36 +288,66 @@ extension LedgerState {
         }
     }
 
-    /// handleApplyRecurringToMonth: posts every active, non-zero rule of the workspace as a
-    /// transaction dated `<monthKey>-<day>`, skipping rules already posted for that month.
+    /// handleApplyRecurringToMonth: posts every active, non-zero rule of the workspace,
+    /// respecting bimonthly/quarterly/yearly month intervals and posting twice for biweekly.
     mutating func applyRecurring(toMonth monthKey: String, workspace: ActiveWorkspace) -> RecurringPostResult {
         let activeRules = recurringRules.filter { $0.active && $0.amount > 0 && workspace.includes($0.mode) }
         guard !activeRules.isEmpty else { return .nothingToPost }
 
+        let targetIdx = parseMonthIndex(monthKey)
         var newTxs: [TransactionItem] = []
+
         for r in activeRules {
-            let alreadyExists = transactions.contains { tx in
-                tx.monthKey == monthKey && (tx.recurringId == r.id
-                    || (tx.categoryId == r.categoryId && tx.description == r.description
-                        && abs(tx.amount - r.amount) < 0.01))
+            let interval = r.monthInterval
+            if interval > 1 {
+                let blockedByIntervalOrSameMonth = transactions.contains { tx in
+                    if tx.recurringId == r.id, let targetIdx, let txIdx = parseMonthIndex(tx.monthKey),
+                       abs(targetIdx - txIdx) < interval {
+                        return true
+                    }
+                    return tx.monthKey == monthKey && (tx.recurringId == r.id
+                        || (tx.categoryId == r.categoryId && tx.description == r.description
+                            && abs(tx.amount - r.amount) < 0.01))
+                }
+                if blockedByIntervalOrSameMonth { continue }
             }
-            guard !alreadyExists else { continue }
-            newTxs.append(TransactionItem(
-                id: "tx-rec-\(r.id)-\(monthKey)",
-                date: "\(monthKey)-\(String(format: "%02d", r.dayOfMonth))",
-                monthKey: monthKey,
-                mode: r.mode,
-                type: r.type,
-                categoryId: r.categoryId,
-                description: r.description,
-                amount: r.amount,
-                client: r.client,
-                taxRate: r.taxRate,
-                deductiblePct: r.deductiblePct,
-                paymentMethod: "Recurring Auto",
-                status: .cleared,
-                recurringId: r.id
-            ))
+
+            for day in r.postingDaysInMonth {
+                let dayStr = String(format: "%02d", day)
+                let dateStr = "\(monthKey)-\(dayStr)"
+                let alreadyExists: Bool
+                if r.frequency == .biweekly {
+                    alreadyExists = transactions.contains { tx in
+                        tx.monthKey == monthKey && tx.date == dateStr && (tx.recurringId == r.id
+                            || (tx.categoryId == r.categoryId && tx.description == r.description
+                                && abs(tx.amount - r.amount) < 0.01))
+                    }
+                } else {
+                    alreadyExists = transactions.contains { tx in
+                        tx.monthKey == monthKey && (tx.recurringId == r.id
+                            || (tx.categoryId == r.categoryId && tx.description == r.description
+                                && abs(tx.amount - r.amount) < 0.01))
+                    }
+                }
+                guard !alreadyExists else { continue }
+                let txId = r.frequency == .biweekly ? "tx-rec-\(r.id)-\(monthKey)-\(dayStr)" : "tx-rec-\(r.id)-\(monthKey)"
+                newTxs.append(TransactionItem(
+                    id: txId,
+                    date: dateStr,
+                    monthKey: monthKey,
+                    mode: r.mode,
+                    type: r.type,
+                    categoryId: r.categoryId,
+                    description: r.description,
+                    amount: r.amount,
+                    client: r.client,
+                    taxRate: r.taxRate,
+                    deductiblePct: r.deductiblePct,
+                    paymentMethod: "Recurring Auto",
+                    status: .cleared,
+                    recurringId: r.id
+                ))
+            }
         }
         guard !newTxs.isEmpty else { return .alreadyPosted }
         transactions.insert(contentsOf: newTxs, at: 0)

@@ -123,6 +123,33 @@ enum LedgerMerge {
         )
         summary.planItemsMerged = planItems.added + planItems.updated
 
+        let importProfiles = mergeKeyed(
+            local.importProfiles ?? [],
+            remote.importProfiles ?? [],
+            key: { $0.id },
+            chooseRemote: { l, r in
+                if r.updatedAt > l.updatedAt { return true }
+                if l.updatedAt > r.updatedAt { return false }
+                return !preferLocal
+            }
+        )
+
+        var importRules = mergeKeyed(
+            local.importRules ?? [],
+            remote.importRules ?? [],
+            key: { $0.id },
+            chooseRemote: { l, r in
+                if r.updatedAt > l.updatedAt { return true }
+                if l.updatedAt > r.updatedAt { return false }
+                return !preferLocal
+            }
+        )
+        importRules.items.sort { lhs, rhs in
+            if lhs.priority != rhs.priority { return lhs.priority < rhs.priority }
+            return lhs.id < rhs.id
+        }
+        summary.rulesMerged += importProfiles.added + importProfiles.updated + importRules.added + importRules.updated
+
         var mergedSettings = preferLocal ? local.settings : remote.settings
         mergedSettings.setupCompleted = local.settings.setupCompleted || remote.settings.setupCompleted
         if (mergedSettings.ownerDisplayName ?? "").isEmpty {
@@ -147,7 +174,9 @@ enum LedgerMerge {
             savingsGoals: goals.items,
             accounts: accounts.items,
             netWorthSnapshots: snapshots.items,
-            yearlyPlanItems: planItems.items
+            yearlyPlanItems: planItems.items,
+            importProfiles: importProfiles.items,
+            importRules: importRules.items
         )
         return (merged, summary)
     }

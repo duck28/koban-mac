@@ -55,6 +55,65 @@ enum DataIOStorage {
         return results
     }
 
+    static func isBankStatementFileName(_ name: String) -> Bool {
+        if name.isEmpty || name.hasPrefix(".") || name.contains("/") || name.contains("\\") {
+            return false
+        }
+        let ext = (name as NSString).pathExtension.lowercased()
+        return ["xml", "ofx", "qfx", "csv", "xlsx", "xls"].contains(ext)
+    }
+
+    static func scanImportFolder(in dir: String) -> [PendingImportFile] {
+        var isDir: ObjCBool = false
+        let trimmed = dir.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              FileManager.default.fileExists(atPath: trimmed, isDirectory: &isDir),
+              isDir.boolValue else { return [] }
+        let url = URL(fileURLWithPath: trimmed, isDirectory: true)
+        let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey]
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: url,
+            includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        return urls.compactMap { u -> PendingImportFile? in
+            let name = u.lastPathComponent
+            guard isBankStatementFileName(name),
+                  let v = try? u.resourceValues(forKeys: Set(keys)),
+                  v.isRegularFile == true else { return nil }
+            return PendingImportFile(
+                name: name,
+                url: u,
+                size: Int64(v.fileSize ?? 0),
+                modified: v.contentModificationDate ?? .distantPast,
+                extensionName: u.pathExtension.lowercased()
+            )
+        }
+        .sorted { $0.modified > $1.modified }
+    }
+
+    @discardableResult
+    static func archiveImportedFile(at url: URL) throws -> URL {
+        let name = url.lastPathComponent
+        guard isBankStatementFileName(name),
+              FileManager.default.fileExists(atPath: url.path) else {
+            throw StorageError("Invalid statement file for archiving.")
+        }
+        let importedDir = url.deletingLastPathComponent().appendingPathComponent("Imported", isDirectory: true)
+        try FileManager.default.createDirectory(at: importedDir, withIntermediateDirectories: true)
+        var target = importedDir.appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: target.path) {
+            let stem = (name as NSString).deletingPathExtension
+            let ext = (name as NSString).pathExtension
+            let suffix = "-\(Int64(Date().timeIntervalSince1970))"
+            let uniqueName = ext.isEmpty ? "\(stem)\(suffix)" : "\(stem)\(suffix).\(ext)"
+            target = importedDir.appendingPathComponent(uniqueName)
+        }
+        try FileManager.default.moveItem(at: url, to: target)
+        return target
+    }
+
     static func deleteBackupFile(at url: URL, activeDatabase: URL = KobanPaths.activeDatabaseURL) throws {
         if url.standardizedFileURL == activeDatabase.standardizedFileURL {
             throw StorageError("Refusing to delete the active database.")

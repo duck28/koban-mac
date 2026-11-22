@@ -148,11 +148,7 @@ enum YearlyPlanner {
         }
         var recMap: [String: Double] = [:]
         for r in state.recurringRules where r.active && r.amount > 0 {
-            switch r.frequency {
-            case .monthly: recMap[r.categoryId] = r.amount * 12
-            case .quarterly: recMap[r.categoryId] = r.amount * 4
-            case .yearly: recMap[r.categoryId] = r.amount
-            }
+            recMap[r.categoryId] = r.annualEquivalent
         }
 
         let accounts = state.accounts

@@ -123,6 +123,14 @@ struct TransactionsView: View {
             }
             .buttonStyle(.zenOutline)
 
+            Button { store.presentImportRulesModal() } label: {
+                HStack(spacing: 6) {
+                    ZIcon("tag", size: 14).foregroundStyle(Zen.ink2)
+                    Text("Rules & Profiles")
+                }
+            }
+            .buttonStyle(.zenOutline)
+
             Button { store.exportTransactionsCSV() } label: {
                 HStack(spacing: 6) {
                     ZIcon("arrow.down.doc", size: 14)
@@ -584,9 +592,8 @@ private struct TransactionRow: View {
             .padding(.horizontal, 12)
             .frame(width: TxCol.amount, alignment: .trailing)
 
-            ZenMiniButton(icon: "trash", size: 14, tint: Zen.ink3, hoverTint: Zen.accent,
+            ZenMiniButton(icon: "trash", size: 14, tint: hovering ? Zen.ink2 : Zen.ink2.opacity(0.85), hoverTint: Zen.accent,
                           help: L10n.t("tx.deleteTip"), action: onDelete)
-                .opacity(hovering ? 1 : 0)
                 .frame(width: TxCol.actions)
         }
         .padding(.vertical, 10)

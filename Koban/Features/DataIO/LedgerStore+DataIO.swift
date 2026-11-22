@@ -14,9 +14,22 @@ final class DataIOCenter {
     var dbInfo: DbInfo?
     var backups: [BackupEntry] = []
     var isLoadingBackups = false
+    var pendingImportFiles: [PendingImportFile] = []
+    var importBannerDismissed = false
 
     @ObservationIgnored private var autoSyncRunning = false
     @ObservationIgnored private var autoSyncQueued = false
+
+    func refreshImportWatchFolder() {
+        let dir = DeviceSettings.importWatchDir.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !dir.isEmpty else {
+            pendingImportFiles = []
+            return
+        }
+        let files = DataIOStorage.scanImportFolder(in: dir)
+        pendingImportFiles = files
+        if !files.isEmpty { importBannerDismissed = false }
+    }
 
     /// refreshInfo() in BackupsExportView.tsx / DbLocationCard.tsx (get_db_info + list_backups).
     func refresh(_ store: LedgerStore) {
@@ -77,7 +90,9 @@ enum DataIOPanels {
         let panel = NSOpenPanel()
         panel.title = title
         if !extensions.isEmpty {
-            panel.allowedContentTypes = extensions.compactMap { UTType(filenameExtension: $0) }
+            panel.allowedContentTypes = extensions.compactMap {
+                UTType(filenameExtension: $0) ?? UTType(filenameExtension: $0, conformingTo: .data)
+            }
         }
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -173,21 +188,74 @@ extension LedgerStore {
 
     // MARK: - Import modal
 
-    func presentImportModal(initialPreview: ImportPreviewData?) {
+    func presentImportModal(initialPreview: ImportPreviewData?, initialPendingFileURL: URL? = nil) {
         present("dataio.import", dismissOnBackdrop: false) {
-            ImportDataModal(initialPreview: initialPreview)
+            ImportDataModal(initialPreview: initialPreview, initialPendingFileURL: initialPendingFileURL)
+        }
+    }
+
+    func presentImportRulesModal() {
+        present("dataio.importRules", dismissOnBackdrop: true) {
+            ImportRulesManagerView()
         }
     }
 
     /// The modal's default target (`activeWorkspace === 'freelancer' ? 'freelancer' : 'home'`).
     var importDefaultMode: LedgerMode { state.settings.activeWorkspace == .freelancer ? .freelancer : .home }
 
+    func pickImportWatchFolder() {
+        guard let url = DataIOPanels.folder(title: "Select Bank Statement Watch Folder") else { return }
+        DeviceSettings.importWatchDir = url.path
+        DataIOCenter.shared.refreshImportWatchFolder()
+    }
+
+    func clearImportWatchFolder() {
+        DeviceSettings.importWatchDir = ""
+        DataIOCenter.shared.pendingImportFiles = []
+    }
+
+    func prepareBankImport(
+        url: URL,
+        targetMode: LedgerMode,
+        accountId: String?,
+        isWatchedFile: Bool = false,
+        selectedProfileId: String? = nil
+    ) -> ImportPreviewData? {
+        do {
+            let data = try Data(contentsOf: url)
+            let parsed = try BankImport.parseStatement(
+                data: data,
+                fileName: url.lastPathComponent,
+                savedProfiles: state.importProfiles ?? [],
+                accountId: accountId,
+                fallbackCurrency: state.settings.currency,
+                selectedProfileId: selectedProfileId
+            )
+            return ImportPreviewData(
+                kind: .transactions,
+                targetMode: targetMode,
+                fileName: url.lastPathComponent,
+                sheetName: parsed.sheetName,
+                proposedState: state,
+                importedCount: parsed.rawTransactions.count,
+                accountId: accountId,
+                watchedFileURL: isWatchedFile ? url : nil,
+                bankParseResult: parsed
+            )
+        } catch {
+            notify("Import error: \(DataIOMessages.text(error))")
+            return nil
+        }
+    }
+
     /// handlePrepareImport: asks for a file and builds the preview (nil when cancelled or failed).
     func prepareImport(
         kind: ImportKind,
         targetMode: LedgerMode,
         passphrase: String?,
-        keyfileURL: URL? = nil
+        keyfileURL: URL? = nil,
+        accountId: String? = nil,
+        selectedProfileId: String? = nil
     ) -> ImportPreviewData? {
         do {
             if kind == .databaseBackup {
@@ -201,6 +269,10 @@ extension LedgerStore {
                 return ImportPreviewData(kind: .databaseBackup, targetMode: targetMode, fileName: url.lastPathComponent,
                                          proposedState: restored, importedCount: ImportPreviewData.backupRecordCount(restored),
                                          backupPath: url.path)
+            }
+            if kind == .transactions {
+                guard let url = DataIOPanels.open(extensions: ["xml", "ofx", "qfx", "csv", "xlsx", "xls"]) else { return nil }
+                return prepareBankImport(url: url, targetMode: targetMode, accountId: accountId, isWatchedFile: false, selectedProfileId: selectedProfileId)
             }
             guard let url = DataIOPanels.open(extensions: ["xlsx", "xls", "csv"]) else { return nil }
             let wb = try SpreadsheetReader.read(url: url)
@@ -245,6 +317,39 @@ extension LedgerStore {
             selectedTab = .transactions
             notify("Imported \(preview.importedCount) transaction(s) from \"\(preview.fileName)\" into \(preview.targetMode.rawValue) ledger.")
         }
+    }
+
+    func commitBankImport(
+        preview: ImportPreviewData,
+        stagedRows: [StagedBankTransaction],
+        savedProfile: BankImportProfile?,
+        savedRules: [ImportRule],
+        archiveWatchedFile: Bool
+    ) {
+        let importedCount = stagedRows.filter(\.included).count
+        update { current in
+            current = BankImport.applyStagedTransactionsToLedger(
+                stagedRows: stagedRows,
+                currentState: current,
+                savedProfile: savedProfile,
+                savedRules: savedRules
+            )
+        }
+        dismissModal()
+        selectedTab = .transactions
+        if archiveWatchedFile, let watchedURL = preview.watchedFileURL {
+            _ = try? DataIOStorage.archiveImportedFile(at: watchedURL)
+            DataIOCenter.shared.refreshImportWatchFolder()
+        }
+        notify("Imported \(importedCount) bank transaction(s) from \"\(preview.fileName)\" into \(preview.targetMode.rawValue) ledger.")
+    }
+
+    func saveImportRulesAndProfiles(rules: [ImportRule], profiles: [BankImportProfile]) {
+        update { current in
+            current.importRules = rules
+            current.importProfiles = profiles
+        }
+        notify("Saved import rules & bank profiles.")
     }
 
     // MARK: - Backups

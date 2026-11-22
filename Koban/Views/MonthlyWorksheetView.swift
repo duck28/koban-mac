@@ -255,7 +255,7 @@ struct MonthlyWorksheetView: View {
 
 private enum Cols {
     static let value: CGFloat = 84
-    static let actions: CGFloat = 48
+    static let actions: CGFloat = 54
     static let gap: CGFloat = 6
 }
 
@@ -289,7 +289,7 @@ private struct GroupHeader: View {
                 if showMode {
                     Text((gs.group.mode == .home ? L10n.t("workspace.home") : L10n.t("workspace.freelancer")).uppercased())
                         .font(.zen(9))
-                        .foregroundStyle(Zen.ink3)
+                        .foregroundStyle(Zen.ink2)
                         .lineLimit(1)
                         .fixedSize()
                         .padding(.horizontal, 6).padding(.vertical, 1)
@@ -302,7 +302,7 @@ private struct GroupHeader: View {
             headerLabel(L10n.t("worksheet.diffShort")).padding(.trailing, 4)
             HStack(spacing: 2) {
                 ZenMiniButton(icon: "plus", size: 14, tint: Zen.ink2, help: L10n.t("worksheet.addCategoryTip"), action: onAdd)
-                ZenMiniButton(icon: "trash", size: 12, hoverTint: Zen.accent, help: L10n.t("worksheet.deleteGroupTip"), action: onDelete)
+                ZenMiniButton(icon: "trash", size: 13, tint: Zen.ink2, hoverTint: Zen.accent, help: L10n.t("worksheet.deleteGroupTip"), action: onDelete)
             }
             .frame(width: Cols.actions, alignment: .trailing)
         }
@@ -409,31 +409,27 @@ private struct CategoryRow: View {
                 InlineTextField(value: displayName, cellID: "\(cat.id)#name") { store.renameCategory(cat.id, to: $0) }
                     .help(displayName)
 
-                // Only built when visible (recurring, or row hovered): fewer views per row.
-                if recurring || hovering {
-                    Button { store.toggleCategoryRecurring(cat.id) } label: {
-                        ZIcon("repeat", size: 12, weight: .regular)
-                            .foregroundStyle(recurring ? Zen.indigo : Zen.ink3)
-                            .padding(4)
-                            .background(recurring ? Zen.indigo.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 4))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help(L10n.t(recurring ? "worksheet.recurringDisableTip" : "worksheet.recurringEnableTip"))
-                } else {
-                    Color.clear.frame(width: 20, height: 20)
+                Button { store.toggleCategoryRecurring(cat.id) } label: {
+                    ZIcon("repeat", size: 13, weight: .regular)
+                        .foregroundStyle(recurring ? Zen.indigo : Zen.ink2.opacity(0.8))
+                        .padding(4)
+                        .background(recurring ? Zen.indigo.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(recurring ? Zen.indigo.opacity(0.35) : .clear, lineWidth: 1))
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .help(L10n.t(recurring ? "worksheet.recurringDisableTip" : "worksheet.recurringEnableTip"))
 
                 if row.txCount > 0 && row.directActual == nil {
                     Text(L10n.tf("worksheet.txCountSuffix", ["count": row.txCount]))
                         .font(.zen(10)).zenAmount()
-                        .foregroundStyle(Zen.ink3)
+                        .foregroundStyle(Zen.ink2)
                         .padding(.horizontal, 6).padding(.vertical, 1)
                         .background(Zen.raised, in: RoundedRectangle(cornerRadius: 4))
                         .help(L10n.tf("worksheet.txCountTip", ["count": row.txCount]))
                 }
                 if row.directActual != nil {
-                    ZenMiniButton(icon: "arrow.counterclockwise", size: 12,
+                    ZenMiniButton(icon: "arrow.counterclockwise", size: 13, tint: Zen.ink2.opacity(0.85),
                                   help: L10n.t("worksheet.manualActualTip")) {
                         store.setDirectActual(nil, categoryId: cat.id)
                     }
@@ -468,15 +464,11 @@ private struct CategoryRow: View {
                 .padding(.trailing, 4)
                 .frame(width: Cols.value, alignment: .trailing)
 
-            // Hover-only actions are built on hover instead of hidden with opacity (each button
-            // carries its own hover tracking, which was a large part of the scroll cost).
             HStack(spacing: 4) {
-                if hovering {
-                    ZenMiniButton(icon: "receipt", size: 12, help: L10n.t("worksheet.logTxTip")) {
-                        store.openQuickAdd(categoryId: cat.id)
-                    }
-                    ZenMiniButton(icon: "trash", size: 12, hoverTint: Zen.accent, help: L10n.t("worksheet.deleteCategoryTip"), action: onDelete)
+                ZenMiniButton(icon: "receipt", size: 13, tint: hovering ? Zen.ink2 : Zen.ink2.opacity(0.8), help: L10n.t("worksheet.logTxTip")) {
+                    store.openQuickAdd(categoryId: cat.id)
                 }
+                ZenMiniButton(icon: "trash", size: 13, tint: hovering ? Zen.ink2 : Zen.ink2.opacity(0.8), hoverTint: Zen.accent, help: L10n.t("worksheet.deleteCategoryTip"), action: onDelete)
             }
             .frame(width: Cols.actions, height: 20, alignment: .trailing)
         }

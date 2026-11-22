@@ -9,11 +9,13 @@ import Foundation
 @MainActor
 enum DeviceSettings {
     static let backupDirKey = "koban_device_backup_dir_v1"
+    static let importWatchDirKey = "koban_device_import_watch_dir_v1"
 
     /// Dev runs against a scratch vault (KOBAN_DB_PATH) keep the value in memory only, so they
     /// never change the real app's preference.
     private static var isolated: Bool { DataIOStorage.locationOverrideActive }
     private static var scratchBackupDir: String?
+    private static var scratchImportWatchDir: String?
 
     /// This device's backup folder: nil = never set, "" = none.
     static var backupDir: String? {
@@ -21,6 +23,15 @@ enum DeviceSettings {
         set {
             if isolated { scratchBackupDir = newValue; return }
             UserDefaults.standard.set(newValue, forKey: backupDirKey)
+        }
+    }
+
+    /// This device's watched bank statement import folder (local device preference).
+    static var importWatchDir: String {
+        get { (isolated ? scratchImportWatchDir : UserDefaults.standard.string(forKey: importWatchDirKey)) ?? "" }
+        set {
+            if isolated { scratchImportWatchDir = newValue; return }
+            UserDefaults.standard.set(newValue, forKey: importWatchDirKey)
         }
     }
 

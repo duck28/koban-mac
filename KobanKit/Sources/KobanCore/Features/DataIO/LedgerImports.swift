@@ -44,6 +44,9 @@ struct ImportPreviewData: Sendable {
     var budgetRows: [BudgetImportPreviewRow]?
     var transactionRows: [TransactionImportPreviewRow]?
     var backupPath: String?
+    var accountId: String? = nil
+    var watchedFileURL: URL? = nil
+    var bankParseResult: BankStatementParseResult? = nil
 
     /// handleConfirmPreview in ImportDataModal.tsx: drops the rows the user unticked.
     /// Excluded transactions are removed; excluded budget rows revert to their previous

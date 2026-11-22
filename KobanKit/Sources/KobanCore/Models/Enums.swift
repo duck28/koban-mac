@@ -72,7 +72,12 @@ enum TransactionStatus: String, Codable, CaseIterable, Sendable {
 }
 
 enum RecurrenceFrequency: String, Codable, CaseIterable, Sendable {
-    case monthly, quarterly, yearly
+    case biweekly, monthly, bimonthly, quarterly, yearly
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = RecurrenceFrequency(rawValue: raw) ?? .monthly
+    }
 }
 
 enum ThemePreference: String, Codable, CaseIterable, Sendable {

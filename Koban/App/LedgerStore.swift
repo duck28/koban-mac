@@ -146,6 +146,7 @@ final class LedgerStore {
             AutoLockMonitor.resetIdle()
             webDavAfterLoad()
             UpdateChecker.shared.checkOnLaunchIfEnabled(autoCheck: loaded.settings.autoCheckUpdates ?? true)
+            DataIOCenter.shared.refreshImportWatchFolder()
             if greet {
                 let owner = (loaded.settings.ownerDisplayName ?? "").isEmpty ? "Koban Owner" : loaded.settings.ownerDisplayName!
                 notify("Signed in as \(owner).")
