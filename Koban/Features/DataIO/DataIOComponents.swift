@@ -32,9 +32,9 @@ struct DataIOPill: View {
     }
 }
 
-/// p-3 rounded-lg border status banner (success / error / info).
+/// p-3 rounded-lg border status banner (success / error / warning / info).
 struct DataIOBanner: View {
-    enum Kind { case success, error, info }
+    enum Kind { case success, error, warning, info }
     let kind: Kind
     let text: String
 
@@ -42,6 +42,7 @@ struct DataIOBanner: View {
         switch kind {
         case .success: return Zen.positive
         case .error: return DataIOColors.negative
+        case .warning: return Zen.warning
         case .info: return Zen.indigo
         }
     }
@@ -49,7 +50,7 @@ struct DataIOBanner: View {
     private var icon: String {
         switch kind {
         case .success: return "checkmark.circle"
-        case .error: return "exclamationmark.triangle"
+        case .error, .warning: return "exclamationmark.triangle"
         case .info: return "info.circle"
         }
     }

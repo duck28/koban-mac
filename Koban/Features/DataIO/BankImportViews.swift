@@ -785,7 +785,7 @@ struct BankImportReviewView: View {
 
     private func toggleVisibleRows() {
         let visIds = Set(visibleRows.map(\.id))
-        let anyIncluded = visibleRows.contains(\.included)
+        let anyIncluded = visibleRows.contains(where: \.included)
         for i in stagedRows.indices where visIds.contains(stagedRows[i].id) {
             stagedRows[i].included = !anyIncluded
         }
