@@ -80,24 +80,32 @@ extension LedgerState {
         }
     }
 
-    /// handleTransferBetweenAccounts: moves `amount` between the two accounts' starting and current
-    /// balances (a payment *into* a liability reduces its debt).
+    /// handleTransferBetweenAccounts: records the transfer as a linked pair of transactions (out of
+    /// one account, into the other) instead of editing balances, so it has a history and can be
+    /// undone by deleting it. The pair uses `kobanTransferCategoryId`, so it is never income or
+    /// spending. A payment *into* a liability reduces its debt.
+    @discardableResult
     mutating func transferBetweenAccounts(from fromId: String, to toId: String, amount: Double,
-                                          today: String = KobanTemplates.today()) {
-        for i in accounts.indices {
-            let isLiability = accounts[i].classification == .liability
-            let delta: Double
-            if accounts[i].id == fromId {
-                delta = isLiability ? amount : -amount
-            } else if accounts[i].id == toId {
-                delta = isLiability ? -amount : amount
-            } else {
-                continue
-            }
-            accounts[i].startingBalance += delta
-            accounts[i].currentBalance += delta
-            accounts[i].updatedAt = today
-        }
+                                          note: String = "", date: String = KobanTemplates.today(),
+                                          pairId: String = KobanID.make("tx-xfer")) -> Bool {
+        guard fromId != toId, amount > 0,
+              let from = accounts.first(where: { $0.id == fromId }),
+              let to = accounts.first(where: { $0.id == toId }) else { return false }
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let description = trimmed.isEmpty ? "\(from.name) → \(to.name)" : trimmed
+        let monthKey = String(date.prefix(7))
+        let outTx = TransactionItem(
+            id: "\(pairId)-out", date: date, monthKey: monthKey, mode: from.mode, type: .expense,
+            categoryId: kobanTransferCategoryId, accountId: from.id, description: description,
+            amount: amount, paymentMethod: "Transfer", status: .cleared,
+            transferPeerId: "\(pairId)-in")
+        let inTx = TransactionItem(
+            id: "\(pairId)-in", date: date, monthKey: monthKey, mode: to.mode, type: .income,
+            categoryId: kobanTransferCategoryId, accountId: to.id, description: description,
+            amount: amount, paymentMethod: "Transfer", status: .cleared,
+            transferPeerId: "\(pairId)-out")
+        transactions.insert(contentsOf: [outTx, inTx], at: 0)
+        return true
     }
 
     /// commitBalanceEdit in AccountsNetWorthView: reconciles an account to `newBalance`.

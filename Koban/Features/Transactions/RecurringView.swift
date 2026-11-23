@@ -287,6 +287,7 @@ private struct RecurringRuleRow: View {
     let currency: String
     let monthKey: String
     @State private var hovering = false
+    @State private var confirmingDelete = false
 
     private var startMissing: Bool {
         (rule.frequency == .biweekly && rule.startDate == nil)
@@ -407,9 +408,21 @@ private struct RecurringRuleRow: View {
                 .help("Recurring amount (syncs with monthly budget)")
             }
 
-            DeleteRuleButton { store.deleteRecurringRule(rule.id) }
+            DeleteRuleButton {
+                if store.state.settings.confirmBeforeDelete == false {
+                    store.deleteRecurringRule(rule.id)
+                } else {
+                    confirmingDelete = true
+                }
+            }
         }
         .fixedSize()
+        .alert(L10n.tf("recurring.deleteTitle", ["name": rule.description]), isPresented: $confirmingDelete) {
+            Button(L10n.t("common.delete"), role: .destructive) { store.deleteRecurringRule(rule.id) }
+            Button(L10n.t("common.cancel"), role: .cancel) {}
+        } message: {
+            Text(L10n.t("recurring.deleteMsg"))
+        }
     }
 }
 

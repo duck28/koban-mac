@@ -1,0 +1,710 @@
+{
+  "monthSummaries": [
+    {
+      "monthKey": "2025-01",
+      "workspace": "home",
+      "incomeBudget": 7500,
+      "incomeActual": 5000,
+      "expenseBudget": 2420,
+      "expenseActual": 2000.5,
+      "savingsBudget": 500,
+      "savingsActual": 500,
+      "netBudget": 4580,
+      "netActual": 2499.5,
+      "vatCollected": 0,
+      "vatPaidOnExpenses": 0,
+      "rows": [
+        {
+          "id": "c-salary",
+          "budget": 7500,
+          "actual": 5000,
+          "difference": -2500,
+          "txCount": 2,
+          "autoActual": false,
+          "budgetFromSchedule": true,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-rent",
+          "budget": 1800,
+          "actual": 1800,
+          "difference": 0,
+          "txCount": 0,
+          "autoActual": true,
+          "budgetFromSchedule": false,
+          "isFixedCost": true
+        },
+        {
+          "id": "c-food",
+          "budget": 600,
+          "actual": 200.5,
+          "difference": 399.5,
+          "txCount": 2,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-netflix",
+          "budget": 20,
+          "actual": 0,
+          "difference": 20,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-water",
+          "budget": 0,
+          "actual": 0,
+          "difference": 0,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": true,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-etf",
+          "budget": 500,
+          "actual": 500,
+          "difference": 0,
+          "txCount": 1,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": true
+        }
+      ]
+    },
+    {
+      "monthKey": "2025-02",
+      "workspace": "home",
+      "incomeBudget": 5100,
+      "incomeActual": 0,
+      "expenseBudget": 2540,
+      "expenseActual": 2100,
+      "savingsBudget": 500,
+      "savingsActual": 500,
+      "netBudget": 2060,
+      "netActual": -2600,
+      "vatCollected": 0,
+      "vatPaidOnExpenses": 0,
+      "rows": [
+        {
+          "id": "c-salary",
+          "budget": 5100,
+          "actual": 0,
+          "difference": -5100,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-rent",
+          "budget": 1800,
+          "actual": 1800,
+          "difference": 0,
+          "txCount": 1,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": true
+        },
+        {
+          "id": "c-food",
+          "budget": 600,
+          "actual": 300,
+          "difference": 300,
+          "txCount": 1,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-netflix",
+          "budget": 20,
+          "actual": 0,
+          "difference": 20,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-water",
+          "budget": 120,
+          "actual": 0,
+          "difference": 120,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": true,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-etf",
+          "budget": 500,
+          "actual": 500,
+          "difference": 0,
+          "txCount": 0,
+          "autoActual": true,
+          "budgetFromSchedule": false,
+          "isFixedCost": true
+        }
+      ]
+    },
+    {
+      "monthKey": "2025-03",
+      "workspace": "home",
+      "incomeBudget": 5000,
+      "incomeActual": 0,
+      "expenseBudget": 2470,
+      "expenseActual": 2500,
+      "savingsBudget": 500,
+      "savingsActual": 500,
+      "netBudget": 2030,
+      "netActual": -3000,
+      "vatCollected": 0,
+      "vatPaidOnExpenses": 0,
+      "rows": [
+        {
+          "id": "c-salary",
+          "budget": 5000,
+          "actual": 0,
+          "difference": -5000,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": true,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-rent",
+          "budget": 1800,
+          "actual": 1800,
+          "difference": 0,
+          "txCount": 0,
+          "autoActual": true,
+          "budgetFromSchedule": false,
+          "isFixedCost": true
+        },
+        {
+          "id": "c-food",
+          "budget": 650,
+          "actual": 700,
+          "difference": -50,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-netflix",
+          "budget": 20,
+          "actual": 0,
+          "difference": 20,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-water",
+          "budget": 0,
+          "actual": 0,
+          "difference": 0,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": true,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-etf",
+          "budget": 500,
+          "actual": 500,
+          "difference": 0,
+          "txCount": 0,
+          "autoActual": true,
+          "budgetFromSchedule": false,
+          "isFixedCost": true
+        }
+      ]
+    },
+    {
+      "monthKey": "2025-04",
+      "workspace": "home",
+      "incomeBudget": 5000,
+      "incomeActual": 0,
+      "expenseBudget": 2540,
+      "expenseActual": 1750,
+      "savingsBudget": 500,
+      "savingsActual": 500,
+      "netBudget": 1960,
+      "netActual": -2250,
+      "vatCollected": 0,
+      "vatPaidOnExpenses": 0,
+      "rows": [
+        {
+          "id": "c-salary",
+          "budget": 5000,
+          "actual": 0,
+          "difference": -5000,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": true,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-rent",
+          "budget": 1800,
+          "actual": 1750,
+          "difference": 50,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": true
+        },
+        {
+          "id": "c-food",
+          "budget": 600,
+          "actual": 0,
+          "difference": 600,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-netflix",
+          "budget": 20,
+          "actual": 0,
+          "difference": 20,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-water",
+          "budget": 120,
+          "actual": 0,
+          "difference": 120,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": true,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-etf",
+          "budget": 500,
+          "actual": 500,
+          "difference": 0,
+          "txCount": 0,
+          "autoActual": true,
+          "budgetFromSchedule": false,
+          "isFixedCost": true
+        }
+      ]
+    },
+    {
+      "monthKey": "2025-01",
+      "workspace": "combined",
+      "incomeBudget": 10500,
+      "incomeActual": 6081,
+      "expenseBudget": 2520,
+      "expenseActual": 2000.5,
+      "savingsBudget": 500,
+      "savingsActual": 500,
+      "netBudget": 7480,
+      "netActual": 3580.5,
+      "vatCollected": 81,
+      "vatPaidOnExpenses": 0,
+      "rows": [
+        {
+          "id": "c-salary",
+          "budget": 7500,
+          "actual": 5000,
+          "difference": -2500,
+          "txCount": 2,
+          "autoActual": false,
+          "budgetFromSchedule": true,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-rent",
+          "budget": 1800,
+          "actual": 1800,
+          "difference": 0,
+          "txCount": 0,
+          "autoActual": true,
+          "budgetFromSchedule": false,
+          "isFixedCost": true
+        },
+        {
+          "id": "c-food",
+          "budget": 600,
+          "actual": 200.5,
+          "difference": 399.5,
+          "txCount": 2,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-netflix",
+          "budget": 20,
+          "actual": 0,
+          "difference": 20,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-water",
+          "budget": 0,
+          "actual": 0,
+          "difference": 0,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": true,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-etf",
+          "budget": 500,
+          "actual": 500,
+          "difference": 0,
+          "txCount": 1,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": true
+        },
+        {
+          "id": "c-consult",
+          "budget": 3000,
+          "actual": 1081,
+          "difference": -1919,
+          "txCount": 1,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-software",
+          "budget": 100,
+          "actual": 0,
+          "difference": 100,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        }
+      ]
+    },
+    {
+      "monthKey": "2025-02",
+      "workspace": "freelancer",
+      "incomeBudget": 3000,
+      "incomeActual": 0,
+      "expenseBudget": 120,
+      "expenseActual": 216.2,
+      "savingsBudget": 0,
+      "savingsActual": 0,
+      "netBudget": 2880,
+      "netActual": -216.2,
+      "vatCollected": 0,
+      "vatPaidOnExpenses": 16.2,
+      "rows": [
+        {
+          "id": "c-consult",
+          "budget": 3000,
+          "actual": 0,
+          "difference": -3000,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        },
+        {
+          "id": "c-software",
+          "budget": 120,
+          "actual": 216.2,
+          "difference": -96.2,
+          "txCount": 0,
+          "autoActual": false,
+          "budgetFromSchedule": false,
+          "isFixedCost": false
+        }
+      ]
+    }
+  ],
+  "recurringOccurrences": [
+    {
+      "id": "r-sal",
+      "months": [
+        {
+          "monthKey": "2025-01",
+          "dates": [
+            "2025-01-03",
+            "2025-01-17",
+            "2025-01-31"
+          ]
+        },
+        {
+          "monthKey": "2025-02",
+          "dates": [
+            "2025-02-14",
+            "2025-02-28"
+          ]
+        },
+        {
+          "monthKey": "2025-03",
+          "dates": [
+            "2025-03-14",
+            "2025-03-28"
+          ]
+        },
+        {
+          "monthKey": "2025-04",
+          "dates": [
+            "2025-04-11",
+            "2025-04-25"
+          ]
+        },
+        {
+          "monthKey": "2025-05",
+          "dates": [
+            "2025-05-09",
+            "2025-05-23"
+          ]
+        },
+        {
+          "monthKey": "2025-06",
+          "dates": [
+            "2025-06-06",
+            "2025-06-20"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r-water",
+      "months": [
+        {
+          "monthKey": "2025-01",
+          "dates": []
+        },
+        {
+          "monthKey": "2025-02",
+          "dates": [
+            "2025-02-10"
+          ]
+        },
+        {
+          "monthKey": "2025-03",
+          "dates": []
+        },
+        {
+          "monthKey": "2025-04",
+          "dates": [
+            "2025-04-10"
+          ]
+        },
+        {
+          "monthKey": "2025-05",
+          "dates": []
+        },
+        {
+          "monthKey": "2025-06",
+          "dates": [
+            "2025-06-10"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r-netflix",
+      "months": [
+        {
+          "monthKey": "2025-01",
+          "dates": [
+            "2025-01-12"
+          ]
+        },
+        {
+          "monthKey": "2025-02",
+          "dates": [
+            "2025-02-12"
+          ]
+        },
+        {
+          "monthKey": "2025-03",
+          "dates": [
+            "2025-03-12"
+          ]
+        },
+        {
+          "monthKey": "2025-04",
+          "dates": [
+            "2025-04-12"
+          ]
+        },
+        {
+          "monthKey": "2025-05",
+          "dates": [
+            "2025-05-12"
+          ]
+        },
+        {
+          "monthKey": "2025-06",
+          "dates": [
+            "2025-06-12"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r-legacy-q",
+      "months": [
+        {
+          "monthKey": "2025-01",
+          "dates": null
+        },
+        {
+          "monthKey": "2025-02",
+          "dates": null
+        },
+        {
+          "monthKey": "2025-03",
+          "dates": null
+        },
+        {
+          "monthKey": "2025-04",
+          "dates": null
+        },
+        {
+          "monthKey": "2025-05",
+          "dates": null
+        },
+        {
+          "monthKey": "2025-06",
+          "dates": null
+        }
+      ]
+    }
+  ],
+  "accountBalances": [
+    {
+      "id": "acc-chk",
+      "liveBalance": 12280.5
+    },
+    {
+      "id": "acc-sav",
+      "liveBalance": 6000
+    },
+    {
+      "id": "acc-etf",
+      "liveBalance": 20500
+    },
+    {
+      "id": "acc-card",
+      "liveBalance": 200
+    },
+    {
+      "id": "acc-house",
+      "liveBalance": 400000
+    }
+  ],
+  "netWorth": {
+    "liquidAssets": 18280.5,
+    "investmentAssets": 20500,
+    "fixedAssets": 400000,
+    "totalLiabilities": 200,
+    "netWorth": 438580.5,
+    "history": [
+      {
+        "monthKey": "2025-01",
+        "netWorth": 440680.5,
+        "liquidAssets": 20380.5,
+        "totalLiabilities": 200,
+        "hasExplicitSnapshot": false
+      },
+      {
+        "monthKey": "2025-02",
+        "netWorth": 438580.5,
+        "liquidAssets": 18580.5,
+        "totalLiabilities": 500,
+        "hasExplicitSnapshot": false
+      },
+      {
+        "monthKey": "2025-03",
+        "netWorth": 438580.5,
+        "liquidAssets": 18280.5,
+        "totalLiabilities": 200,
+        "hasExplicitSnapshot": false
+      },
+      {
+        "monthKey": "2025-04",
+        "netWorth": 438580.5,
+        "liquidAssets": 18280.5,
+        "totalLiabilities": 200,
+        "hasExplicitSnapshot": false
+      },
+      {
+        "monthKey": "2025-05",
+        "netWorth": 438580.5,
+        "liquidAssets": 18280.5,
+        "totalLiabilities": 200,
+        "hasExplicitSnapshot": false
+      },
+      {
+        "monthKey": "2025-06",
+        "netWorth": 5,
+        "liquidAssets": 1,
+        "totalLiabilities": 5,
+        "hasExplicitSnapshot": true
+      },
+      {
+        "monthKey": "2025-07",
+        "netWorth": 438580.5,
+        "liquidAssets": 18280.5,
+        "totalLiabilities": 200,
+        "hasExplicitSnapshot": false
+      },
+      {
+        "monthKey": "2025-08",
+        "netWorth": 438580.5,
+        "liquidAssets": 18280.5,
+        "totalLiabilities": 200,
+        "hasExplicitSnapshot": false
+      },
+      {
+        "monthKey": "2025-09",
+        "netWorth": 438580.5,
+        "liquidAssets": 18280.5,
+        "totalLiabilities": 200,
+        "hasExplicitSnapshot": false
+      },
+      {
+        "monthKey": "2025-10",
+        "netWorth": 438580.5,
+        "liquidAssets": 18280.5,
+        "totalLiabilities": 200,
+        "hasExplicitSnapshot": false
+      },
+      {
+        "monthKey": "2025-11",
+        "netWorth": 438580.5,
+        "liquidAssets": 18280.5,
+        "totalLiabilities": 200,
+        "hasExplicitSnapshot": false
+      },
+      {
+        "monthKey": "2025-12",
+        "netWorth": 438580.5,
+        "liquidAssets": 18280.5,
+        "totalLiabilities": 200,
+        "hasExplicitSnapshot": false
+      }
+    ]
+  }
+}

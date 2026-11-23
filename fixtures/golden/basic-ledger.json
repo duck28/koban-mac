@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "settings": {
+    "setupCompleted": true,
+    "setupMode": "both",
+    "activeWorkspace": "home",
+    "currency": "CHF",
+    "theme": "system",
+    "themePalette": "default",
+    "density": "comfortable",
+    "backupDir": "",
+    "autoBackup": false,
+    "maxBackups": 20,
+    "defaultVatRate": 8.1,
+    "taxReserveRate": 25,
+    "activeYear": 2025,
+    "activeMonth": 3,
+    "autoFillFixedActuals": true
+  },
+  "groups": [
+    { "id": "g-inc", "mode": "home", "name": "Income", "kind": "income", "color": "#3f704d", "column": 0, "order": 0 },
+    { "id": "g-exp", "mode": "home", "name": "Home", "kind": "expense", "color": "#b9432f", "column": 1, "order": 1 },
+    { "id": "g-sav", "mode": "home", "name": "Savings", "kind": "savings", "color": "#3f704d", "column": 1, "order": 2 },
+    { "id": "g-biz", "mode": "freelancer", "name": "Revenue", "kind": "income", "color": "#3c5a78", "column": 0, "order": 3 },
+    { "id": "g-bizexp", "mode": "freelancer", "name": "Business costs", "kind": "expense", "color": "#a87a2a", "column": 1, "order": 4 }
+  ],
+  "categories": [
+    { "id": "c-salary", "groupId": "g-inc", "mode": "home", "name": "Salary", "kind": "income", "defaultBudget": 5000, "isRecurring": true, "order": 0 },
+    { "id": "c-rent", "groupId": "g-exp", "mode": "home", "name": "Rent", "kind": "expense", "defaultBudget": 1800, "isRecurring": true, "isFixedCost": true, "order": 0 },
+    { "id": "c-food", "groupId": "g-exp", "mode": "home", "name": "Groceries", "kind": "expense", "defaultBudget": 600, "order": 1 },
+    { "id": "c-netflix", "groupId": "g-exp", "mode": "home", "name": "Streaming", "kind": "expense", "defaultBudget": 20, "isRecurring": true, "order": 2 },
+    { "id": "c-water", "groupId": "g-exp", "mode": "home", "name": "Water", "kind": "expense", "defaultBudget": 0, "isRecurring": true, "order": 3 },
+    { "id": "c-etf", "groupId": "g-sav", "mode": "home", "name": "ETF", "kind": "savings", "defaultBudget": 500, "isFixedCost": true, "targetAccountId": "acc-etf", "order": 0 },
+    { "id": "c-consult", "groupId": "g-biz", "mode": "freelancer", "name": "Consulting", "kind": "income", "defaultBudget": 3000, "taxRate": 8.1, "order": 0 },
+    { "id": "c-software", "groupId": "g-bizexp", "mode": "freelancer", "name": "Software", "kind": "expense", "defaultBudget": 100, "taxRate": 8.1, "deductiblePct": 100, "order": 0 }
+  ],
+  "monthlyBudgets": [
+    { "monthKey": "2025-02", "categoryId": "c-salary", "budget": 5100, "directActual": null, "budgetManual": true },
+    { "monthKey": "2025-03", "categoryId": "c-food", "budget": 650, "directActual": 700 },
+    { "monthKey": "2025-04", "categoryId": "c-rent", "budget": 1800, "directActual": 1750 },
+    { "monthKey": "2025-02", "categoryId": "c-software", "budget": 120, "directActual": 216.2 }
+  ],
+  "transactions": [
+    { "id": "t-sal-1", "date": "2025-01-03", "monthKey": "2025-01", "mode": "home", "type": "income", "categoryId": "c-salary", "accountId": "acc-chk", "description": "Salary", "amount": 2500, "status": "cleared" },
+    { "id": "t-sal-2", "date": "2025-01-17", "monthKey": "2025-01", "mode": "home", "type": "income", "categoryId": "c-salary", "accountId": "acc-chk", "description": "Salary", "amount": 2500, "status": "cleared" },
+    { "id": "t-food-1", "date": "2025-01-10", "monthKey": "2025-01", "mode": "home", "type": "expense", "categoryId": "c-food", "accountId": "acc-chk", "description": "Market", "amount": 120.5, "status": "cleared" },
+    { "id": "t-food-2", "date": "2025-01-24", "monthKey": "2025-01", "mode": "home", "type": "expense", "categoryId": "c-food", "accountId": "acc-chk", "description": "Market", "amount": 80, "status": "cleared" },
+    { "id": "t-etf-1", "date": "2025-01-25", "monthKey": "2025-01", "mode": "home", "type": "expense", "categoryId": "c-etf", "accountId": "acc-chk", "description": "ETF savings", "amount": 500, "status": "cleared" },
+    { "id": "t-rent-2", "date": "2025-02-01", "monthKey": "2025-02", "mode": "home", "type": "expense", "categoryId": "c-rent", "accountId": "acc-chk", "description": "Rent", "amount": 1800, "status": "cleared" },
+    { "id": "t-loan-2", "date": "2025-02-20", "monthKey": "2025-02", "mode": "home", "type": "expense", "categoryId": "c-food", "accountId": "acc-card", "description": "Card purchase", "amount": 300, "status": "cleared" },
+    { "id": "tx-xfer-1-out", "date": "2025-03-15", "monthKey": "2025-03", "mode": "home", "type": "expense", "categoryId": "__transfer__", "accountId": "acc-chk", "description": "To savings", "amount": 1000, "paymentMethod": "Transfer", "status": "cleared", "transferPeerId": "tx-xfer-1-in" },
+    { "id": "tx-xfer-1-in", "date": "2025-03-15", "monthKey": "2025-03", "mode": "home", "type": "income", "categoryId": "__transfer__", "accountId": "acc-sav", "description": "To savings", "amount": 1000, "paymentMethod": "Transfer", "status": "cleared", "transferPeerId": "tx-xfer-1-out" },
+    { "id": "tx-xfer-2-out", "date": "2025-03-28", "monthKey": "2025-03", "mode": "home", "type": "expense", "categoryId": "__transfer__", "accountId": "acc-chk", "description": "Card bill", "amount": 300, "paymentMethod": "Transfer", "status": "cleared", "transferPeerId": "tx-xfer-2-in" },
+    { "id": "tx-xfer-2-in", "date": "2025-03-28", "monthKey": "2025-03", "mode": "home", "type": "income", "categoryId": "__transfer__", "accountId": "acc-card", "description": "Card bill", "amount": 300, "paymentMethod": "Transfer", "status": "cleared", "transferPeerId": "tx-xfer-2-out" },
+    { "id": "t-consult-1", "date": "2025-01-31", "monthKey": "2025-01", "mode": "freelancer", "type": "income", "categoryId": "c-consult", "accountId": "acc-chk", "description": "Invoice 1", "amount": 1081, "taxRate": 8.1, "status": "cleared" }
+  ],
+  "recurringRules": [
+    { "id": "r-sal", "mode": "home", "type": "income", "categoryId": "c-salary", "description": "Salary", "amount": 2500, "frequency": "biweekly", "dayOfMonth": 3, "active": true, "startDate": "2025-01-03" },
+    { "id": "r-water", "mode": "home", "type": "expense", "categoryId": "c-water", "description": "Water", "amount": 120, "frequency": "bimonthly", "dayOfMonth": 10, "active": true, "startMonth": "2025-02" },
+    { "id": "r-netflix", "mode": "home", "type": "expense", "categoryId": "c-netflix", "description": "Streaming", "amount": 20, "frequency": "monthly", "dayOfMonth": 12, "active": true },
+    { "id": "r-legacy-q", "mode": "home", "type": "expense", "categoryId": "c-water", "description": "Legacy quarterly", "amount": 60, "frequency": "quarterly", "dayOfMonth": 5, "active": true }
+  ],
+  "savingsGoals": [],
+  "accounts": [
+    { "id": "acc-chk", "name": "Checking", "mode": "home", "type": "checking", "classification": "liquid", "startingBalance": 10000, "currentBalance": 10000, "autoTrackTransactions": true, "includeInNetWorth": true, "color": "#3f704d", "updatedAt": "2024-12-31" },
+    { "id": "acc-sav", "name": "Savings", "mode": "home", "type": "savings", "classification": "liquid", "startingBalance": 5000, "currentBalance": 5000, "autoTrackTransactions": false, "includeInNetWorth": true, "color": "#3c5a78", "updatedAt": "2025-02-01" },
+    { "id": "acc-etf", "name": "ETF Portfolio", "mode": "home", "type": "brokerage", "classification": "investment", "startingBalance": 20000, "currentBalance": 20000, "autoTrackTransactions": true, "includeInNetWorth": true, "color": "#a87a2a", "updatedAt": "2024-12-31" },
+    { "id": "acc-card", "name": "Credit card", "mode": "home", "type": "credit_card", "classification": "liability", "startingBalance": 200, "currentBalance": 200, "autoTrackTransactions": true, "includeInNetWorth": true, "color": "#b9432f", "updatedAt": "2024-12-31" },
+    { "id": "acc-house", "name": "Flat", "mode": "home", "type": "real_estate", "classification": "fixed_asset", "startingBalance": 400000, "currentBalance": 400000, "autoTrackTransactions": false, "includeInNetWorth": true, "color": "#5f5b54", "updatedAt": "2024-12-31" }
+  ],
+  "netWorthSnapshots": [
+    { "id": "nw-snap-2025-06", "monthKey": "2025-06", "recordedAt": "2025-06-30", "liquidAssets": 1, "retirementAssets": 2, "investmentAssets": 3, "fixedAssets": 4, "totalAssets": 10, "totalLiabilities": 5, "netWorth": 5 }
+  ],
+  "yearlyPlanItems": []
+}

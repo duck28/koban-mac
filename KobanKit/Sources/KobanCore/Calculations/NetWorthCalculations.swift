@@ -70,6 +70,10 @@ extension FinancialAccount {
             if tx.accountId == id {
                 count += 1
                 if tx.type == .income { income += tx.amount } else { expense += tx.amount }
+                // Transfer pairs also move manually valued accounts after their last valuation
+                if tx.isAccountTransfer && tx.date > updatedAt {
+                    pendingTransferIn += tx.type == .income ? tx.amount : -tx.amount
+                }
             } else if tx.type == .expense, savingsTargets[tx.categoryId] == id {
                 count += 1
                 transferIn += tx.amount
@@ -92,8 +96,39 @@ extension FinancialAccount {
     }
 }
 
+/// Net-worth buckets of a set of account balances (assets floored at 0, like the KPI cards).
+private struct ClassTotals {
+    var liquid = 0.0, retirement = 0.0, investment = 0.0, fixed = 0.0, liabilities = 0.0
+
+    init() {}
+
+    init(_ items: [AccountComputedItem]) {
+        for item in items where item.account.includeInNetWorth {
+            let val = max(0, item.liveBalance)
+            switch item.account.classification {
+            case .liquid: liquid += val
+            case .retirement: retirement += val
+            case .investment: investment += val
+            case .fixedAsset: fixed += val
+            case .liability: liabilities += abs(item.liveBalance)
+            }
+        }
+    }
+
+    func point(month: Int, label: String, key: String) -> NetWorthHistoryPoint {
+        let assets = liquid + retirement + investment + fixed
+        return NetWorthHistoryPoint(
+            month: month, monthLabel: label, monthKey: key,
+            liquidAssets: liquid, retirementAssets: retirement, investmentAssets: investment,
+            fixedAssets: fixed, totalAssets: assets, totalLiabilities: liabilities,
+            netWorth: assets - liabilities, hasExplicitSnapshot: false)
+    }
+}
+
 extension LedgerState {
-    func netWorthMetrics(workspace: ActiveWorkspace, monthlyOutflowReference: Double = 0) -> NetWorthSummaryMetrics {
+    /// `now` decides which months are history and which are forecast (tests pass a fixed date).
+    func netWorthMetrics(workspace: ActiveWorkspace, monthlyOutflowReference: Double = 0,
+                         now: Date = Date()) -> NetWorthSummaryMetrics {
         let targets = savingsTargets
         let workspaceAccounts = accounts.filter { workspace.includes($0.mode) }
         let items = workspaceAccounts.map { $0.liveBalance(transactions: transactions, savingsTargets: targets) }
@@ -114,13 +149,14 @@ extension LedgerState {
         let totalAssets = liquid + retirement + investment + fixed
         func share(_ v: Double) -> Double { totalAssets > 0 ? v / totalAssets * 100 : 0 }
 
-        // 12-month trajectory for the active year: explicit snapshots win,
-        // otherwise liquid assets are projected forward by cumulative net cashflow.
+        // 12-month trajectory for the active year (computeNetWorthMetrics on Windows):
+        // - an explicit snapshot wins;
+        // - past & current months are rebuilt from the transactions dated up to that month's end;
+        // - future months start from today's balances and add each month's planned (budget) net,
+        //   with savings that have a target account moved into that account's class.
         let snapshots = Dictionary(netWorthSnapshots.map { ($0.monthKey, $0) }, uniquingKeysWith: { _, last in last })
-        let cashflow = annualSeries(year: settings.activeYear, workspace: workspace)
-        var cumulative = 0.0
-        // Savings with a target account move money into that account's class instead of vanishing
-        var transfers: [AccountLiquidityClass: Double] = [:]
+        let todayMonth = MonthKey.current(now)
+        var forecast = ClassTotals(items)
         let history: [NetWorthHistoryPoint] = MonthKey.shortMonthLabels.enumerated().map { idx, label in
             let month = idx + 1
             let key = MonthKey.format(year: settings.activeYear, month: month)
@@ -137,33 +173,33 @@ extension LedgerState {
                     hasExplicitSnapshot: true
                 )
             }
-            cumulative += cashflow[idx].netActual
-            if !targets.isEmpty {
-                for gs in monthSummary(monthKey: key, workspace: workspace).groups where gs.group.kind == .savings {
-                    for row in gs.rows where row.actual != 0 {
-                        if let tid = targets[row.category.id], let target = accountById[tid], target.includeInNetWorth {
-                            transfers[target.classification, default: 0] += row.actual
-                        }
+            if key <= todayMonth {
+                let monthEnd = "\(key)-31"
+                let upTo = transactions.filter { $0.date <= monthEnd }
+                let monthItems = workspaceAccounts.map { $0.liveBalance(transactions: upTo, savingsTargets: targets) }
+                return ClassTotals(monthItems).point(month: month, label: label, key: key)
+            }
+            // Forecast: planned net of this month on top of the running forecast
+            let summary = monthSummary(monthKey: key, workspace: workspace)
+            for gs in summary.groups where gs.group.kind == .savings {
+                for row in gs.rows where row.budget != 0 {
+                    guard let tid = targets[row.category.id], let target = accountById[tid],
+                          target.includeInNetWorth else { continue }
+                    switch target.classification {
+                    case .liquid: forecast.liquid += row.budget
+                    case .retirement: forecast.retirement += row.budget
+                    case .investment: forecast.investment += row.budget
+                    case .fixedAsset: forecast.fixed += row.budget
+                    case .liability: forecast.liabilities -= row.budget
                     }
                 }
             }
-            let projectedLiquid = max(0, liquid + cumulative + (transfers[.liquid] ?? 0))
-            let projectedRetirement = retirement + (transfers[.retirement] ?? 0)
-            let projectedInvestment = investment + (transfers[.investment] ?? 0)
-            let projectedFixed = fixed + (transfers[.fixedAsset] ?? 0)
-            let projectedLiabilities = max(0, liabilities - (transfers[.liability] ?? 0))
-            let projectedTotal = projectedLiquid + projectedRetirement + projectedInvestment + projectedFixed
-            return NetWorthHistoryPoint(
-                month: month, monthLabel: label, monthKey: key,
-                liquidAssets: projectedLiquid,
-                retirementAssets: projectedRetirement,
-                investmentAssets: projectedInvestment,
-                fixedAssets: projectedFixed,
-                totalAssets: projectedTotal,
-                totalLiabilities: projectedLiabilities,
-                netWorth: projectedTotal - projectedLiabilities,
-                hasExplicitSnapshot: false
-            )
+            // netBudget already subtracts the savings; the part moved into tracked accounts is not lost
+            forecast.liquid += summary.netBudget
+            var clamped = forecast
+            clamped.liquid = max(0, clamped.liquid)
+            clamped.liabilities = max(0, clamped.liabilities)
+            return clamped.point(month: month, label: label, key: key)
         }
 
         return NetWorthSummaryMetrics(

@@ -41,6 +41,15 @@ enum JSNumber {
 
 // MARK: - Transactions
 
+/// Category id of transactions created by "Transfer between accounts" (TRANSFER_CATEGORY_ID).
+/// It matches no budget category, so a transfer pair never counts as income or spending.
+let kobanTransferCategoryId = "__transfer__"
+
+extension TransactionItem {
+    /// True for one leg of an account-to-account transfer pair.
+    var isAccountTransfer: Bool { categoryId == kobanTransferCategoryId }
+}
+
 enum TransactionTypeFilter: String, CaseIterable, Sendable {
     case all, income, expense
 }
@@ -97,7 +106,10 @@ extension LedgerState {
 
     /// handleDeleteTransaction.
     mutating func deleteTransaction(_ id: String) {
-        transactions.removeAll { $0.id == id }
+        // Deleting either leg of an account-to-account transfer removes the whole transfer
+        let tx = transactions.first { $0.id == id }
+        let peerId = (tx?.isAccountTransfer ?? false) ? tx?.transferPeerId : nil
+        transactions.removeAll { $0.id == id || ($0.id == peerId && peerId != nil) }
     }
 
     /// The filtered, date-descending list shown in the Transactions table.

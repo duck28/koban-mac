@@ -28,7 +28,9 @@ struct KobanApp: App {
 }
 
 /// Menu bar commands. Same shortcuts as the Windows build with ⌘ in place of Ctrl:
-/// ⌘B sidebar, ⌘S backup, ⌘N add entry, ⌘L lock, and plain 1–9 / 0 to switch views.
+/// ⌘B sidebar, ⌘S backup, ⌘N add entry, ⌘F search transactions, ⌘I import, ⌘L lock, ⌘, settings,
+/// ⌘[ / ⌘] previous / next month, ⌘T this month, ⇧⌘P post recurring items, and plain 1–9 / 0
+/// to switch views.
 struct KobanCommands: Commands {
     let store: LedgerStore
 
@@ -38,9 +40,19 @@ struct KobanCommands: Commands {
                 Task { await UpdateChecker.shared.checkNow(notifyStore: store) }
             }
         }
+        CommandGroup(replacing: .appSettings) {
+            Button(L10n.t("shortcuts.settings") + "…") { store.selectedTab = .settings }
+                .keyboardShortcut(",", modifiers: .command)
+                .disabled(!store.isUnlockedAndReady)
+        }
         CommandGroup(replacing: .newItem) {
             Button("Add Entry") { store.openQuickAdd() }
                 .keyboardShortcut("n", modifiers: .command)
+                .disabled(!store.isUnlockedAndReady)
+        }
+        CommandGroup(after: .textEditing) {
+            Button(L10n.t("shortcuts.search")) { store.openTransactionSearch() }
+                .keyboardShortcut("f", modifiers: .command)
                 .disabled(!store.isUnlockedAndReady)
         }
         CommandGroup(after: .newItem) {
@@ -82,6 +94,15 @@ struct KobanCommands: Commands {
                 .disabled(!store.isUnlockedAndReady)
             Button("Next Month") { store.shiftMonth(by: 1) }
                 .keyboardShortcut("]", modifiers: .command)
+                .disabled(!store.isUnlockedAndReady)
+            Button(L10n.t("shortcuts.thisMonth")) { store.goToCurrentMonth() }
+                .keyboardShortcut("t", modifiers: .command)
+                .disabled(!store.isUnlockedAndReady)
+
+            Divider()
+
+            Button(L10n.t("shortcuts.postRecurring")) { store.applyRecurringToMonth() }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
                 .disabled(!store.isUnlockedAndReady)
 
             Divider()
@@ -126,6 +147,8 @@ enum DigitKeyNavigation {
 /// Posted in debug builds when KOBAN_SNAPSHOT_ACTION is set (no-op in release).
 extension Notification.Name {
     static let kobanDebugAction = Notification.Name("KobanDebugAction")
+    /// ⌘F: the Transactions view focuses its search field.
+    static let kobanFocusTransactionSearch = Notification.Name("KobanFocusTransactionSearch")
 }
 
 #if DEBUG

@@ -790,7 +790,7 @@ private struct AccountCard: View {
                     .padding(.top, 2)
             } else {
                 Button(action: onStartEdit) {
-                    Text("\(isLiability && item.liveBalance > 0 ? "-" : "")\(KobanFormat.currency(abs(item.liveBalance), code: currency))")
+                    Text("\((isLiability ? item.liveBalance > 0 : item.liveBalance < 0) ? "-" : "")\(KobanFormat.currency(abs(item.liveBalance), code: currency))")
                         .font(.zen(20, .semibold))
                         .monospacedDigit()
                         .underline(balanceHover)

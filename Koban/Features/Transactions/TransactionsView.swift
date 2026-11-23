@@ -26,6 +26,9 @@ struct TransactionsView: View {
 
     @State private var didInit = false
     @State private var contentWidth: CGFloat = 1000
+    @FocusState private var searchFocused: Bool
+    /// Transaction waiting for the delete confirmation (confirmBeforeDelete).
+    @State private var pendingDelete: TransactionItem?
 
     var body: some View {
         let state = store.state
@@ -39,8 +42,9 @@ struct TransactionsView: View {
         let filtered = state.filteredTransactions(
             workspace: workspace, monthKey: monthKey, scope: scopeFilter, type: typeFilter,
             accountId: accountFilter == "all" ? nil : accountFilter, query: searchQuery)
-        let totalIncome = filtered.filter { $0.type == .income }.reduce(0) { $0 + $1.amount }
-        let totalExpense = filtered.filter { $0.type == .expense }.reduce(0) { $0 + $1.amount }
+        // Account-to-account transfers move money but are neither income nor spending
+        let totalIncome = filtered.filter { $0.type == .income && !$0.isAccountTransfer }.reduce(0) { $0 + $1.amount }
+        let totalExpense = filtered.filter { $0.type == .expense && !$0.isAccountTransfer }.reduce(0) { $0 + $1.amount }
 
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -50,8 +54,12 @@ struct TransactionsView: View {
                 filterBar(availableAccounts: availableAccounts, currency: currency,
                           income: totalIncome, expense: totalExpense)
                 TransactionsTable(transactions: filtered, state: state, currency: currency,
-                                  showFreelancerFields: showFreelancerFields, availableWidth: contentWidth) {
-                    store.deleteTransaction($0)
+                                  showFreelancerFields: showFreelancerFields, availableWidth: contentWidth) { id in
+                    if state.settings.confirmBeforeDelete == false {
+                        store.deleteTransaction(id)
+                    } else {
+                        pendingDelete = state.transactions.first { $0.id == id }
+                    }
                 }
             }
             .padding(24)
@@ -65,6 +73,18 @@ struct TransactionsView: View {
         .onChange(of: store.preselectedCategoryId) { _, _ in consumePreselectedCategory() }
         .onChange(of: nav.preselectedAccountId) { _, _ in applyPreselectedAccount() }
         .onChange(of: workspace) { _, _ in ensureValidCategory() }
+        .onReceive(NotificationCenter.default.publisher(for: .kobanFocusTransactionSearch)) { _ in
+            searchFocused = true
+        }
+        .alert(item: $pendingDelete) { tx in
+            Alert(title: Text(L10n.tf("tx.deleteTitle", ["name": tx.description])),
+                  message: Text(tx.isAccountTransfer
+                                ? L10n.t("tx.deleteTransferMsg")
+                                : L10n.tf("tx.deleteMsg", ["date": tx.date,
+                                                           "amount": KobanFormat.currency(tx.amount, code: currency)])),
+                  primaryButton: .destructive(Text(L10n.t("common.delete"))) { store.deleteTransaction(tx.id) },
+                  secondaryButton: .cancel(Text(L10n.t("common.cancel"))))
+        }
         .onChange(of: state.categories) { _, _ in ensureValidCategory() }
         .onReceive(NotificationCenter.default.publisher(for: .kobanDebugAction)) { note in
             switch note.userInfo?["name"] as? String {
@@ -315,6 +335,7 @@ struct TransactionsView: View {
         HStack(spacing: 6) {
             ZIcon("magnifyingglass", size: 14).foregroundStyle(Zen.ink3)
             TextField("", text: $searchQuery, prompt: txPrompt(L10n.t("tx.searchPlaceholder")))
+                .focused($searchFocused)
                 .textFieldStyle(.plain)
                 .font(.zen(12))
                 .foregroundStyle(Zen.ink)
@@ -534,7 +555,8 @@ private struct TransactionRow: View {
             HStack(spacing: 8) {
                 Circle().fill(group.map { Color(hexString: $0.color) } ?? Zen.ink3).frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(category.map { L10n.categoryName($0) } ?? L10n.t("tx.uncategorized"))
+                    Text(category.map { L10n.categoryName($0) }
+                         ?? L10n.t(tx.isAccountTransfer ? "tx.transferLabel" : "tx.uncategorized"))
                         .font(.zen(12, .medium)).foregroundStyle(Zen.ink).lineLimit(1)
                     Text((group.map { L10n.groupName($0) } ?? L10n.t(tx.mode == .home ? "workspace.home" : "workspace.freelancer")).uppercased())
                         .font(.zen(10)).tracking(0.5).foregroundStyle(Zen.ink3).lineLimit(1)

@@ -34,7 +34,7 @@ extension LedgerStore {
     func transferBetweenAccounts(from fromId: String, to toId: String, amount: Double, note: String) {
         let fromName = state.accounts.first(where: { $0.id == fromId })?.name ?? "Source"
         let toName = state.accounts.first(where: { $0.id == toId })?.name ?? "Destination"
-        update { $0.transferBetweenAccounts(from: fromId, to: toId, amount: amount) }
+        update { $0.transferBetweenAccounts(from: fromId, to: toId, amount: amount, note: note) }
         notify("Transferred \(state.settings.currency) \(AccountsJS.fixed(amount, 2)) from \(fromName) → \(toName) (\(note)).")
     }
 

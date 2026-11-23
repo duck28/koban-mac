@@ -292,6 +292,19 @@ final class LedgerStore {
         selectedTab = .transactions
     }
 
+    /// ⌘F: opens Transactions and focuses its search field.
+    func openTransactionSearch() {
+        selectedTab = .transactions
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .kobanFocusTransactionSearch, object: nil)
+        }
+    }
+
+    /// ⌘T: jumps to the current calendar month.
+    func goToCurrentMonth(now: Date = Date(), calendar: Calendar = .current) {
+        setMonth(year: calendar.component(.year, from: now), month: calendar.component(.month, from: now))
+    }
+
     // MARK: - Worksheet actions (App.tsx handlers)
 
     func setBudget(_ amount: Double, categoryId: String) {
