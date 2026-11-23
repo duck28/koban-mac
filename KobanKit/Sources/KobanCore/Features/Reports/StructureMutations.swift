@@ -18,6 +18,8 @@ struct CategoryPatch: Hashable, Sendable {
     var defaultBudget: Double?
     var taxRate: Double?
     var deductiblePct: Double?
+    /// `.some(nil)` clears the target account.
+    var targetAccountId: String?? = nil
 }
 
 extension LedgerState {
@@ -82,6 +84,7 @@ extension LedgerState {
         if let v = patch.defaultBudget { categories[idx].defaultBudget = v }
         if let v = patch.taxRate { categories[idx].taxRate = v }
         if let v = patch.deductiblePct { categories[idx].deductiblePct = v }
+        if let v = patch.targetAccountId { categories[idx].targetAccountId = v }
     }
 
     // MARK: - Reorder / move helpers

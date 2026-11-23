@@ -257,6 +257,8 @@ private enum Cols {
     static let value: CGFloat = 84
     static let actions: CGFloat = 54
     static let gap: CGFloat = 6
+    /// Width & height of each row icon slot (recurring, fixed cost, reset), so icons line up.
+    static let iconSlot: CGFloat = 22
 }
 
 // MARK: - Group block
@@ -404,45 +406,101 @@ private struct CategoryRow: View {
         let displayName = L10n.categoryName(cat)
 
         HStack(spacing: Cols.gap) {
-            // Name + recurring toggle + badges
+            // Name + badges, then the row icons in fixed slots so they line up across rows
             HStack(spacing: 6) {
                 InlineTextField(value: displayName, cellID: "\(cat.id)#name") { store.renameCategory(cat.id, to: $0) }
                     .help(displayName)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                Button { store.toggleCategoryRecurring(cat.id) } label: {
-                    ZIcon("repeat", size: 13, weight: .regular)
-                        .foregroundStyle(recurring ? Zen.indigo : Zen.ink2.opacity(0.8))
-                        .padding(4)
-                        .background(recurring ? Zen.indigo.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
-                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(recurring ? Zen.indigo.opacity(0.35) : .clear, lineWidth: 1))
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(L10n.t(recurring ? "worksheet.recurringDisableTip" : "worksheet.recurringEnableTip"))
-
-                if row.txCount > 0 && row.directActual == nil {
-                    Text(L10n.tf("worksheet.txCountSuffix", ["count": row.txCount]))
-                        .font(.zen(10)).zenAmount()
-                        .foregroundStyle(Zen.ink2)
+                // Variable-width badges (left of the icon slots, so they never shift the icons)
+                HStack(spacing: 6) {
+                    if row.group.kind == .savings {
+                        let target = store.state.accounts.first { $0.id == cat.targetAccountId }
+                        HStack(spacing: 2) {
+                            ZIcon("arrow.right", size: 11, weight: .regular)
+                            Text(target.map { L10n.accountName($0) } ?? "?").lineLimit(1).truncationMode(.tail)
+                        }
+                        .font(.zen(10))
+                        .foregroundStyle(target == nil ? Zen.accent : Zen.indigo)
                         .padding(.horizontal, 6).padding(.vertical, 1)
-                        .background(Zen.raised, in: RoundedRectangle(cornerRadius: 4))
-                        .help(L10n.tf("worksheet.txCountTip", ["count": row.txCount]))
-                }
-                if row.directActual != nil {
-                    ZenMiniButton(icon: "arrow.counterclockwise", size: 13, tint: Zen.ink2.opacity(0.85),
-                                  help: L10n.t("worksheet.manualActualTip")) {
-                        store.setDirectActual(nil, categoryId: cat.id)
+                        .background((target == nil ? Zen.accent : Zen.indigo).opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+                        .frame(maxWidth: 110, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .help(target.map { L10n.tf("worksheet.savingsTargetTip", ["account": L10n.accountName($0)]) }
+                              ?? L10n.t("worksheet.savingsNoTargetTip"))
+                    }
+                    if row.budgetOverridesSchedule {
+                        ZenMiniButton(icon: "calendar.badge.clock", size: 13, tint: Zen.indigo.opacity(0.8),
+                                      hoverTint: Zen.indigo, help: L10n.t("worksheet.manualBudgetTip")) {
+                            store.resetScheduledBudget(categoryId: cat.id)
+                        }
+                    } else if row.budgetFromSchedule {
+                        ZIcon("calendar.badge.clock", size: 13, weight: .regular)
+                            .foregroundStyle(Zen.indigo.opacity(0.8))
+                            .padding(4)
+                            .help(L10n.t("worksheet.scheduledBudgetTip"))
+                    }
+                    if row.txCount > 0 && row.directActual == nil {
+                        Text(L10n.tf("worksheet.txCountSuffix", ["count": row.txCount]))
+                            .font(.zen(10)).zenAmount()
+                            .foregroundStyle(Zen.ink2)
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .background(Zen.raised, in: RoundedRectangle(cornerRadius: 4))
+                            .fixedSize()
+                            .help(L10n.tf("worksheet.txCountTip", ["count": row.txCount]))
+                    }
+                    if showTaxBadge, cat.mode == .freelancer, let badge = taxBadge(cat) {
+                        Text(badge)
+                            .font(.zen(9)).zenAmount()
+                            .foregroundStyle(Zen.indigo)
+                            .padding(.horizontal, 4).padding(.vertical, 1)
+                            .background(Zen.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                 }
-                if showTaxBadge, cat.mode == .freelancer, let badge = taxBadge(cat) {
-                    Text(badge)
-                        .font(.zen(9)).zenAmount()
-                        .foregroundStyle(Zen.indigo)
-                        .padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(Zen.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
-                        .lineLimit(1)
-                        .fixedSize()
+                .layoutPriority(1)
+
+                // Fixed icon slots: recurring · fixed cost · reset Actual (empty slot when absent)
+                HStack(spacing: 2) {
+                    Button { store.toggleCategoryRecurring(cat.id) } label: {
+                        ZIcon("repeat", size: 13, weight: .regular)
+                            .foregroundStyle(recurring ? Zen.indigo : Zen.ink2.opacity(0.8))
+                            .frame(width: Cols.iconSlot, height: Cols.iconSlot)
+                            .background(recurring ? Zen.indigo.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(recurring ? Zen.indigo.opacity(0.35) : .clear, lineWidth: 1))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(L10n.t(recurring ? "worksheet.recurringDisableTip" : "worksheet.recurringEnableTip"))
+
+                    if row.group.kind != .income {
+                        let fixed = row.isFixedCost
+                        Button { store.toggleCategoryFixed(cat.id) } label: {
+                            AnchorIcon(size: 13)
+                                .foregroundStyle(fixed ? Zen.indigo : Zen.ink2.opacity(0.8))
+                                .frame(width: Cols.iconSlot, height: Cols.iconSlot)
+                                .background(fixed ? Zen.indigo.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(fixed ? Zen.indigo.opacity(0.35) : .clear, lineWidth: 1))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(L10n.t(fixed ? "worksheet.fixedCostTip" : "worksheet.fixedCostEnableTip"))
+                    } else {
+                        Color.clear.frame(width: Cols.iconSlot, height: Cols.iconSlot)
+                    }
+
+                    if row.directActual != nil {
+                        ZenMiniButton(icon: "arrow.counterclockwise", size: 13, tint: Zen.ink2.opacity(0.85),
+                                      help: L10n.t("worksheet.manualActualTip")) {
+                            store.setDirectActual(nil, categoryId: cat.id)
+                        }
+                        .frame(width: Cols.iconSlot, height: Cols.iconSlot)
+                    } else {
+                        Color.clear.frame(width: Cols.iconSlot, height: Cols.iconSlot)
+                    }
                 }
+                .fixedSize()
             }
             .padding(.trailing, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -451,11 +509,13 @@ private struct CategoryRow: View {
                 store.setBudget($0 ?? 0, categoryId: cat.id)
             }
             .frame(width: Cols.value)
-            InlineNumberField(value: (row.actual * 100).rounded() / 100, color: Zen.ink, weight: .medium,
-                              cellID: "\(cat.id)#actual") {
+            InlineNumberField(value: (row.actual * 100).rounded() / 100,
+                              color: row.autoActual ? Zen.indigo : Zen.ink, weight: .medium,
+                              italic: row.autoActual, cellID: "\(cat.id)#actual") {
                 store.setDirectActual($0 ?? 0, categoryId: cat.id)
             }
             .frame(width: Cols.value)
+            .help(row.autoActual ? L10n.t("worksheet.autoActualTip") : "")
 
             Text(signed(row.difference))
                 .font(.zen(12, .medium))
@@ -526,6 +586,8 @@ struct InlineNumberField: View {
     let value: Double
     var color: Color = Zen.ink
     var weight: Font.Weight = .regular
+    /// Italic while not editing (auto-filled fixed-cost Actuals).
+    var italic: Bool = false
     /// Identifies the cell in the EditFocus tab order.
     var cellID: String? = nil
     /// Called on every edit (nil when emptied), like the Windows onChange handlers.
@@ -538,6 +600,7 @@ struct InlineNumberField: View {
             let shown = NumberParsing.editable(value)
             Text(shown.isEmpty ? "0" : shown)
                 .font(.zen(12, weight))
+                .italic(italic)
                 .zenAmount()
                 .foregroundStyle(shown.isEmpty ? Zen.ink3 : color)
                 .lineLimit(1)

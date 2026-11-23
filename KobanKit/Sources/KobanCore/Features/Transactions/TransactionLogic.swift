@@ -188,6 +188,50 @@ extension RecurringRule {
         return [d]
     }
 
+    /// True when the rule has an explicit start (start week for bi-weekly, start month for
+    /// bi-monthly / quarterly / yearly), so the amount due varies per month.
+    var isScheduled: Bool {
+        if frequency == .biweekly { return RecurringSchedule.dayNumber(startDate) != nil }
+        if monthInterval > 1 { return startMonth.flatMap(parseMonthIndex) != nil }
+        return false
+    }
+
+    /// Dates (YYYY-MM-DD) on which the rule falls due inside `monthKey`; nil when unknown
+    /// (legacy bi-monthly / quarterly / yearly rule without a start month).
+    func occurrenceDates(inMonth monthKey: String) -> [String]? {
+        guard let targetIdx = parseMonthIndex(monthKey) else { return nil }
+        if frequency == .biweekly {
+            guard let start = RecurringSchedule.dayNumber(startDate) else {
+                return postingDaysInMonth.map { "\(monthKey)-\(String(format: "%02d", $0))" }
+            }
+            let year = targetIdx / 12, month = targetIdx % 12 + 1
+            guard let first = RecurringSchedule.dayNumber(year: year, month: month, day: 1),
+                  let nextFirst = RecurringSchedule.dayNumber(year: month == 12 ? year + 1 : year,
+                                                              month: month == 12 ? 1 : month + 1, day: 1)
+            else { return nil }
+            let last = nextFirst - 1
+            if last < start { return [] }
+            let offset = max(0, first - start)
+            var day = start + Int((Double(offset) / 14).rounded(.up)) * 14
+            var out: [String] = []
+            while day <= last {
+                out.append(RecurringSchedule.isoDate(day))
+                day += 14
+            }
+            return out
+        }
+        let dayStr = String(format: "%02d", postingDaysInMonth[0])
+        if monthInterval == 1 { return ["\(monthKey)-\(dayStr)"] }
+        guard let startIdx = startMonth.flatMap(parseMonthIndex) else { return nil }
+        let diff = targetIdx - startIdx
+        return diff >= 0 && diff % monthInterval == 0 ? ["\(monthKey)-\(dayStr)"] : []
+    }
+
+    /// Total amount due in `monthKey`, or nil when unknown.
+    func amountDue(inMonth monthKey: String) -> Double? {
+        occurrenceDates(inMonth: monthKey).map { Double($0.count) * amount }
+    }
+
     /// Day input clamp: Math.min(28, Math.max(1, parseInt(v, 10) || 1)).
     static func clampDay(_ text: String) -> Int {
         let parsed = JSNumber.parseInt(text) ?? 0
@@ -202,11 +246,81 @@ private func parseMonthIndex(_ monthKey: String) -> Int? {
     return year * 12 + (month - 1)
 }
 
+/// Calendar math for recurring schedules on UTC day numbers (days since 1970-01-01),
+/// mirroring the helpers in src/utils/calculations.ts.
+enum RecurringSchedule {
+    private static let utc: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }()
+
+    static func dayNumber(year: Int, month: Int, day: Int) -> Int? {
+        var comps = DateComponents()
+        comps.year = year; comps.month = month; comps.day = day
+        guard let date = utc.date(from: comps) else { return nil }
+        let back = utc.dateComponents([.year, .month, .day], from: date)
+        guard back.year == year, back.month == month, back.day == day else { return nil }
+        return Int((date.timeIntervalSince1970 / 86400).rounded())
+    }
+
+    /// Parses YYYY-MM-DD; nil when missing or invalid.
+    static func dayNumber(_ iso: String?) -> Int? {
+        guard let iso, iso.count == 10 else { return nil }
+        let parts = iso.split(separator: "-")
+        guard parts.count == 3, let y = Int(parts[0]), let m = Int(parts[1]), let d = Int(parts[2]) else { return nil }
+        return dayNumber(year: y, month: m, day: d)
+    }
+
+    static func isoDate(_ dayNumber: Int) -> String {
+        let c = utc.dateComponents([.year, .month, .day], from: Date(timeIntervalSince1970: Double(dayNumber) * 86400))
+        return String(format: "%04d-%02d-%02d", c.year ?? 1970, c.month ?? 1, c.day ?? 1)
+    }
+
+    /// Weekday of a day number, Monday = 0 … Sunday = 6.
+    static func weekday(_ dayNumber: Int) -> Int {
+        // 1970-01-01 was a Thursday (= 3)
+        ((dayNumber % 7) + 7 + 3) % 7
+    }
+
+    /// Monday of ISO week 1 of `isoYear`.
+    private static func week1Monday(_ isoYear: Int) -> Int {
+        let jan4 = dayNumber(year: isoYear, month: 1, day: 4)!
+        return jan4 - weekday(jan4)
+    }
+
+    /// (ISO year, ISO week) containing the day.
+    static func isoWeek(_ dayNumber: Int) -> (year: Int, week: Int) {
+        let thursday = dayNumber - weekday(dayNumber) + 3
+        let isoYear = Int(isoDate(thursday).prefix(4))!
+        return (isoYear, (dayNumber - weekday(dayNumber) - week1Monday(isoYear)) / 7 + 1)
+    }
+
+    /// Number of ISO weeks (52 or 53) in `isoYear`.
+    static func weeksInIsoYear(_ isoYear: Int) -> Int {
+        isoWeek(dayNumber(year: isoYear, month: 12, day: 28)!).week
+    }
+
+    /// Date of `weekday` (Mon = 0) in ISO week `week` of `isoYear`.
+    static func date(isoYear: Int, week: Int, weekday: Int) -> String {
+        isoDate(week1Monday(isoYear) + (week - 1) * 7 + min(6, max(0, weekday)))
+    }
+
+    /// Today as YYYY-MM-DD (local time).
+    static func todayISO(_ now: Date = Date(), calendar: Calendar = .current) -> String {
+        let c = calendar.dateComponents([.year, .month, .day], from: now)
+        return String(format: "%04d-%02d-%02d", c.year ?? 1970, c.month ?? 1, c.day ?? 1)
+    }
+}
+
 /// Partial<RecurringRule> as used by RecurringView's inline editors.
 struct RecurringRulePatch: Sendable {
     var frequency: RecurrenceFrequency?
     var dayOfMonth: Int?
     var amount: Double?
+    /// `.some(nil)` clears the field.
+    var startDate: String?? = nil
+    var startMonth: String?? = nil
 }
 
 enum RecurringPostResult: Equatable, Sendable {
@@ -219,10 +333,17 @@ enum RecurringPostResult: Equatable, Sendable {
 extension LedgerState {
     /// The add-rule form's handleSubmit: nil when the category is missing or the amount is invalid.
     func buildRecurringRule(categoryId: String, description: String, amount: String,
-                            frequency: RecurrenceFrequency, dayOfMonth: String) -> RecurringRule? {
+                            frequency: RecurrenceFrequency, dayOfMonth: String,
+                            startDate: String? = nil, startMonth: String? = nil) -> RecurringRule? {
         guard !categoryId.isEmpty, let amt = JSNumber.parseFloat(amount), amt >= 0,
               let cat = categories.first(where: { $0.id == categoryId }) else { return nil }
+        let biweeklyStart = frequency == .biweekly ? startDate.flatMap { RecurringSchedule.dayNumber($0) != nil ? $0 : nil } : nil
+        let monthStart = frequency != .biweekly && frequency != .monthly ? startMonth.flatMap { parseMonthIndex($0) != nil ? $0 : nil } : nil
+        // The start week / month is required for these frequencies (like <input required>).
+        if frequency == .biweekly && biweeklyStart == nil { return nil }
+        if frequency != .biweekly && frequency != .monthly && monthStart == nil { return nil }
         let desc = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let day = biweeklyStart.flatMap { Int($0.suffix(2)) } ?? RecurringRule.clampDay(dayOfMonth)
         return RecurringRule(
             id: "",
             mode: cat.mode,
@@ -231,10 +352,12 @@ extension LedgerState {
             description: desc.isEmpty ? cat.name : desc,
             amount: amt,
             frequency: frequency,
-            dayOfMonth: RecurringRule.clampDay(dayOfMonth),
+            dayOfMonth: day,
             taxRate: cat.taxRate ?? 0,
             deductiblePct: cat.deductiblePct ?? 100,
-            active: true
+            active: true,
+            startDate: biweeklyStart,
+            startMonth: monthStart
         )
     }
 
@@ -256,8 +379,14 @@ extension LedgerState {
         if let f = patch.frequency { recurringRules[rIdx].frequency = f }
         if let d = patch.dayOfMonth { recurringRules[rIdx].dayOfMonth = d }
         if let a = patch.amount { recurringRules[rIdx].amount = a }
+        if let sd = patch.startDate {
+            recurringRules[rIdx].startDate = sd
+            if let sd, let day = Int(sd.suffix(2)) { recurringRules[rIdx].dayOfMonth = min(28, max(1, day)) }
+        }
+        if let sm = patch.startMonth { recurringRules[rIdx].startMonth = sm }
 
-        if let amount = patch.amount, amount > 0 {
+        // Scheduled rules don't seed a monthly-equivalent budget: the worksheet derives it per month.
+        if let amount = patch.amount, amount > 0, !recurringRules[rIdx].isScheduled {
             let eq = (recurringRules[rIdx].monthlyEquivalent * 100).rounded() / 100
             if let cIdx = categories.firstIndex(where: { $0.id == target.categoryId }),
                categories[cIdx].defaultBudget == 0 {
@@ -299,7 +428,8 @@ extension LedgerState {
 
         for r in activeRules {
             let interval = r.monthInterval
-            if interval > 1 {
+            let scheduled = r.isScheduled
+            if interval > 1 && !scheduled {
                 let blockedByIntervalOrSameMonth = transactions.contains { tx in
                     if tx.recurringId == r.id, let targetIdx, let txIdx = parseMonthIndex(tx.monthKey),
                        abs(targetIdx - txIdx) < interval {
@@ -312,9 +442,11 @@ extension LedgerState {
                 if blockedByIntervalOrSameMonth { continue }
             }
 
-            for day in r.postingDaysInMonth {
-                let dayStr = String(format: "%02d", day)
-                let dateStr = "\(monthKey)-\(dayStr)"
+            let dates = scheduled
+                ? (r.occurrenceDates(inMonth: monthKey) ?? [])
+                : r.postingDaysInMonth.map { "\(monthKey)-\(String(format: "%02d", $0))" }
+            for dateStr in dates {
+                let dayStr = String(dateStr.suffix(2))
                 let alreadyExists: Bool
                 if r.frequency == .biweekly {
                     alreadyExists = transactions.contains { tx in

@@ -34,7 +34,9 @@ struct YearlyPlannerView: View {
     private func cur(_ v: Double) -> String { KobanFormat.currency(v, code: currency) }
 
     private var visibleAccounts: [AccountComputedItem] {
-        state.accounts.filter { workspace.includes($0.mode) }.map { $0.liveBalance(transactions: state.transactions) }
+        let targets = state.savingsTargets
+        return state.accounts.filter { workspace.includes($0.mode) }
+            .map { $0.liveBalance(transactions: state.transactions, savingsTargets: targets) }
     }
 
     private func defaultLiquidAccountId(_ accounts: [AccountComputedItem]) -> String {
@@ -321,7 +323,7 @@ struct YearlyPlannerView: View {
         guard let grp = state.groups.first(where: { $0.id == quickGroupId })
                 ?? state.groups.first(where: { workspace.includes($0.mode) })
                 ?? state.groups.first else { return }
-        let annual = quickSchedule == .monthly ? raw * 12 : raw
+        let annual = raw * quickSchedule.periodsPerYear
         store.addCategoryAndPlanItem(YearlyPlanNewItemRequest(
             year: year, groupId: grp.id, mode: grp.mode, kind: grp.kind, label: label,
             annualAmount: annual, schedule: quickSchedule,
@@ -382,17 +384,20 @@ struct YearlyPlannerView: View {
                 .ypFlex(grow: 1, basis: 160)
 
                 formField(L10n.t("yearly.scheduleLabel")) {
-                    YPSelect(options: [(YearlyPlanSchedule.annualLump.rawValue, L10n.tf("yearly.annualTotalOpt", ["year": y])),
-                                       (YearlyPlanSchedule.monthly.rawValue, L10n.t("yearly.monthly12Opt"))],
+                    YPSelect(options: YearlyPlanSchedule.allCases.map {
+                                ($0.rawValue, $0 == .annualLump ? L10n.tf("yearly.annualTotalOpt", ["year": y]) : $0.label)
+                             },
                              selection: quickSchedule.rawValue, fullWidth: true) {
                         quickSchedule = YearlyPlanSchedule(rawValue: $0) ?? .annualLump
                     }
                 }
                 .ypFlex(grow: 1, basis: 125)
 
-                formField(quickSchedule == .monthly
-                          ? L10n.tf("yearly.monthlyCurrencyLabel", ["currency": currency])
-                          : L10n.tf("yearly.annualCurrencyLabel", ["currency": currency])) {
+                formField(quickSchedule == .annualLump
+                          ? L10n.tf("yearly.annualCurrencyLabel", ["currency": currency])
+                          : quickSchedule == .monthly
+                            ? L10n.tf("yearly.monthlyCurrencyLabel", ["currency": currency])
+                            : L10n.tf("yearly.perPaymentCurrencyLabel", ["currency": currency, "freq": quickSchedule.label])) {
                     TextField("", text: $quickAmount, prompt: Text("11000").foregroundStyle(Zen.ink3))
                         .multilineTextAlignment(.trailing)
                         .monospacedDigit()
@@ -571,7 +576,7 @@ struct YearlyPlannerView: View {
             id: "yp-\(year)-\(cat.id)", year: year, mode: cat.mode, categoryId: cat.id, label: cat.name,
             kind: cat.kind, annualAmount: 0, schedule: cat.isRecurring == true ? .monthly : .annualLump,
             accountId: liquid.isEmpty ? nil : liquid,
-            destinationAccountId: cat.kind == .savings && !investment.isEmpty ? investment : nil)
+            destinationAccountId: cat.kind == .savings ? (cat.targetAccountId ?? (investment.isEmpty ? nil : investment)) : nil)
         patch(&item)
         store.upsertYearlyPlanItem(item)
     }
@@ -613,15 +618,12 @@ private struct YPAccountCard: View {
                     if !proj.isLiability {
                         HStack(spacing: 4) {
                             ZIcon("chart.line.uptrend.xyaxis", size: 12, weight: .regular).foregroundStyle(Zen.positive)
+                            // Boxed like the other editable fields; blank when 0 (worksheet behaviour).
                             YPNumberField(value: proj.returnRatePct,
-                                          display: { YearlyPlanner.jsNumber($0) },
-                                          placeholder: "", width: 36, height: 16, fontSize: 11, weight: .medium,
-                                          textColor: Zen.ink, chrome: false, onChange: onRateChange)
+                                          placeholder: "0", width: 52, height: 24, fontSize: 11, weight: .medium,
+                                          textColor: Zen.ink, onChange: onRateChange)
                             Text(L10n.t("yearly.perAnnum")).font(.zen(10)).foregroundStyle(Zen.ink3)
                         }
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Zen.surface, in: RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Zen.line, lineWidth: 1))
                         .fixedSize()
                     }
                 }
@@ -728,10 +730,10 @@ private struct YPCategoryRow: View {
 
     var body: some View {
         let annual = plan?.annualAmount ?? 0
-        let monthly = annual / 12
         let schedule = plan?.schedule ?? (cat.isRecurring == true ? .monthly : .annualLump)
+        let monthly = annual / schedule.periodsPerYear
         let linkedId = plan?.accountId ?? ""
-        let destId = plan?.destinationAccountId ?? ""
+        let destId = plan?.destinationAccountId ?? (cat.kind == .savings ? cat.targetAccountId ?? "" : "")
         let lookupId = destId.isEmpty ? linkedId : destId
         let destAcc = accounts.first { $0.account.id == lookupId }?.account
         let destRate = destAcc.map(YearlyPlanner.returnRate) ?? 0
@@ -785,16 +787,18 @@ private struct YPCategoryRow: View {
     @ViewBuilder
     private func controls(annual: Double, monthly: Double, schedule: YearlyPlanSchedule,
                           linkedId: String, destId: String) -> some View {
-        YPSelect(options: [(YearlyPlanSchedule.monthly.rawValue, L10n.t("yearly.monthly12Opt")),
-                           (YearlyPlanSchedule.annualLump.rawValue, L10n.t("yearly.annualTotalSimple"))],
+        YPSelect(options: YearlyPlanSchedule.allCases.map { ($0.rawValue, $0.label) },
                  selection: schedule.rawValue, height: 28, fontSize: 11, radius: 4, textColor: Zen.ink2) { v in
             onUpdate { $0.schedule = YearlyPlanSchedule(rawValue: v) ?? .monthly }
         }
 
-        HStack(spacing: 4) {
-            Text(L10n.t("yearly.moShort")).font(.zen(10)).foregroundStyle(Zen.ink3)
-            YPNumberField(value: monthly, width: 80, cellID: "\(cat.id)#mo") { m in
-                onUpdate { $0.annualAmount = m * 12; $0.schedule = .monthly }
+        // Per-payment amount (`monthly` holds annual / payments per year); annual = this × payments
+        if schedule != .annualLump {
+            HStack(spacing: 4) {
+                Text(schedule.perPaymentShort).font(.zen(10)).foregroundStyle(Zen.ink3)
+                YPNumberField(value: monthly, width: 80, cellID: "\(cat.id)#mo") { m in
+                    onUpdate { $0.annualAmount = m * schedule.periodsPerYear; $0.schedule = schedule }
+                }
             }
         }
 

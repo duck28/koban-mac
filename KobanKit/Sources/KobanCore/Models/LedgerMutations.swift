@@ -39,6 +39,16 @@ extension LedgerState {
         }
     }
 
+    /// Toggles the fixed-cost flag (Actual follows Budget). Returns the new flag, or nil when
+    /// the category does not exist.
+    @discardableResult
+    mutating func toggleCategoryFixed(_ categoryId: String) -> Bool? {
+        guard let idx = categories.firstIndex(where: { $0.id == categoryId }) else { return nil }
+        let next = !(categories[idx].isFixedCost ?? false)
+        categories[idx].isFixedCost = next
+        return next
+    }
+
     mutating func renameCategory(_ categoryId: String, to name: String) {
         guard let idx = categories.firstIndex(where: { $0.id == categoryId }) else { return }
         categories[idx].name = name
@@ -152,9 +162,10 @@ extension LedgerState {
     mutating func copyMonthValues(from source: String, to target: String, scope: MonthCopyScope,
                                   overwriteExisting: Bool, navigateToTarget: Bool = false,
                                   disableFutureConfirm: Bool = false) -> Int {
-        var sourceRows: [String: (budget: Double, actual: Double)] = [:]
+        var sourceRows: [String: (budget: Double, actual: Double?)] = [:]
         for group in monthSummary(monthKey: source, workspace: .combined).groups {
-            for row in group.rows { sourceRows[row.category.id] = (row.budget, row.actual) }
+            // Auto-filled fixed costs are recomputed per month, not copied
+            for row in group.rows { sourceRows[row.category.id] = (row.budget, row.autoActual ? nil : row.actual) }
         }
 
         var copied = 0

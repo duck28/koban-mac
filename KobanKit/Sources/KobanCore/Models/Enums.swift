@@ -113,7 +113,38 @@ enum WebDavMode: String, Codable, Sendable {
     }
 }
 
-enum YearlyPlanSchedule: String, Codable, Sendable {
+enum YearlyPlanSchedule: String, Codable, CaseIterable, Sendable {
+    case biweekly
     case monthly
+    case bimonthly
+    case quarterly
     case annualLump = "annual_lump"
+
+    // Lenient: an unknown value from a newer build must not make the whole vault unreadable.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = YearlyPlanSchedule(rawValue: raw) ?? .monthly
+    }
+
+    /// Payments per year (annual = per-payment amount × this) — planPeriodsPerYear on Windows.
+    var periodsPerYear: Double {
+        switch self {
+        case .biweekly: return 26
+        case .monthly: return 12
+        case .bimonthly: return 6
+        case .quarterly: return 4
+        case .annualLump: return 1
+        }
+    }
+
+    /// The schedule matching a recurring rule's frequency (planScheduleForFrequency).
+    init(frequency: RecurrenceFrequency) {
+        switch frequency {
+        case .biweekly: self = .biweekly
+        case .monthly: self = .monthly
+        case .bimonthly: self = .bimonthly
+        case .quarterly: self = .quarterly
+        case .yearly: self = .annualLump
+        }
+    }
 }

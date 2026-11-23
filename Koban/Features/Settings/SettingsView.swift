@@ -502,6 +502,9 @@ struct SettingsView: View {
                                   detail: L10n.t("settings.import.hideZeroDesc"),
                                   isOn: setting(\.defaultHideZeroRows, default: false))
             }
+            SettingsToggleRow(title: L10n.t("settings.fixedActualsTitle"),
+                              detail: L10n.t("settings.fixedActualsDesc"),
+                              isOn: setting(\.autoFillFixedActuals, default: true))
         }
     }
 

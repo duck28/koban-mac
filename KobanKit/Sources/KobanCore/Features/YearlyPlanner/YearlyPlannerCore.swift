@@ -147,8 +147,10 @@ enum YearlyPlanner {
             mbMap[mb.categoryId] = mb.budget
         }
         var recMap: [String: Double] = [:]
+        var recSchedule: [String: YearlyPlanSchedule] = [:]
         for r in state.recurringRules where r.active && r.amount > 0 {
             recMap[r.categoryId] = r.annualEquivalent
+            recSchedule[r.categoryId] = YearlyPlanSchedule(frequency: r.frequency)
         }
 
         let accounts = state.accounts
@@ -173,8 +175,8 @@ enum YearlyPlanner {
             guard annualVal > 0 else { continue }
 
             let primary = cat.mode == .freelancer ? bizChecking : homeChecking
-            var dest: String?
-            if cat.kind == .savings {
+            var dest: String? = cat.kind == .savings ? cat.targetAccountId : nil
+            if cat.kind == .savings && dest == nil {
                 let lower = cat.name.lowercased()
                 if lower.contains("retirement") || lower.contains("3a") || lower.contains("pension") {
                     dest = retirementAcc ?? brokerageAcc ?? savingsAcc
@@ -189,7 +191,7 @@ enum YearlyPlanner {
             seeded.append(YearlyPlanItem(
                 id: existing?.id ?? "yp-\(year)-\(cat.id)", year: year, mode: cat.mode,
                 categoryId: cat.id, label: cat.name, kind: cat.kind, annualAmount: annualVal,
-                schedule: .monthly, accountId: primary, destinationAccountId: dest))
+                schedule: recSchedule[cat.id] ?? .monthly, accountId: primary, destinationAccountId: dest))
         }
         return seeded
     }
@@ -288,7 +290,8 @@ extension LedgerState {
         categories.append(CategoryItem(
             id: catId, groupId: req.groupId, mode: req.mode, name: req.label, kind: req.kind,
             defaultBudget: monthlyDefault, isRecurring: nil, taxRate: nil, deductiblePct: nil,
-            order: categories.count + 1))
+            order: categories.count + 1,
+            targetAccountId: req.kind == .savings ? req.destinationAccountId : nil))
         yearlyPlanItems = (yearlyPlanItems ?? []) + [YearlyPlanItem(
             id: "yp-\(req.year)-\(catId)", year: req.year, mode: req.mode, categoryId: catId,
             label: req.label, kind: req.kind, annualAmount: req.annualAmount, schedule: req.schedule,

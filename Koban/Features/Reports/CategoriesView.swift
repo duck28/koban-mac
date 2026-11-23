@@ -399,6 +399,22 @@ private struct CategoryStudioRow: View {
                     }
                 }
 
+                if cat.kind == .savings {
+                    let accounts = store.state.accounts.filter { $0.mode == cat.mode && $0.classification != .liability }
+                    let target = cat.targetAccountId ?? ""
+                    HStack(spacing: 4) {
+                        ZIcon("arrow.right", size: 12, weight: .regular).foregroundStyle(Zen.indigo)
+                        YPSelect(options: [("", L10n.t("categories.targetAccountPick"))]
+                                    + accounts.map { ($0.id, L10n.accountName($0)) },
+                                 selection: target, height: 24, fontSize: 11, radius: 4,
+                                 background: target.isEmpty ? Zen.raised : Zen.indigo.opacity(0.1),
+                                 border: target.isEmpty ? Zen.accent.opacity(0.6) : Zen.indigo.opacity(0.3),
+                                 maxWidth: 170, help: L10n.t("categories.targetAccountTip")) { v in
+                            store.updateCategory(cat.id, CategoryPatch(targetAccountId: .some(v.isEmpty ? nil : v)))
+                        }
+                    }
+                }
+
                 if mode == .freelancer {
                     HStack(spacing: 4) {
                         Text("\(L10n.t("worksheet.vatShort"))%:").font(.zen(10)).foregroundStyle(Zen.ink3)

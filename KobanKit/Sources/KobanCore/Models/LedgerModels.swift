@@ -72,6 +72,12 @@ struct CategoryItem: Codable, Identifiable, Hashable, Sendable {
     /// Tax-deductible % for freelancer expenses (e.g. 100, 50, 0).
     var deductiblePct: Double?
     var order: Int
+    /// Fixed cost (anchor toggle): the month's Actual automatically equals its Budget unless an
+    /// Actual is typed or transactions are logged. Independent of `isRecurring`.
+    var isFixedCost: Bool? = nil
+    /// Savings categories: account the money moves into. Savings transactions then count as a
+    /// transfer (out of their source account, into this one), so net worth does not drop.
+    var targetAccountId: String? = nil
 }
 
 struct MonthlyBudgetEntry: Codable, Hashable, Sendable {
@@ -82,6 +88,9 @@ struct MonthlyBudgetEntry: Codable, Hashable, Sendable {
     /// Direct Actual override from the Monthly Worksheet.
     /// When nil, Actual = sum of transactions for that category & month.
     var directActual: Double?
+    /// True when the user typed this month's Budget for a category whose budget is otherwise
+    /// derived from a scheduled recurring rule (bi-weekly / bi-monthly / quarterly / yearly).
+    var budgetManual: Bool? = nil
 }
 
 struct TransactionItem: Codable, Identifiable, Hashable, Sendable {
@@ -246,6 +255,11 @@ struct RecurringRule: Codable, Identifiable, Hashable, Sendable {
     var taxRate: Double?
     var deductiblePct: Double?
     var active: Bool
+    /// Bi-weekly only: date (YYYY-MM-DD) of the first occurrence; every further one is 14 days
+    /// later. Picked as a start week + weekday. Absent on legacy rules ⇒ dayOfMonth & dayOfMonth±14.
+    var startDate: String? = nil
+    /// Bi-monthly / quarterly / yearly: first month (YYYY-MM) the item is due.
+    var startMonth: String? = nil
 }
 
 struct SavingsGoal: Codable, Identifiable, Hashable, Sendable {
@@ -323,6 +337,9 @@ struct AppSettings: Codable, Hashable, Sendable {
     var autoCheckUpdates: Bool?
     var ownerDisplayName: String? = nil
     var webdav: WebDavConfig?
+    /// Fixed-cost categories: Actual automatically equals Budget until transactions are logged
+    /// or an Actual is typed. Absent ⇒ true.
+    var autoFillFixedActuals: Bool? = nil
 }
 
 struct YearlyPlanItem: Codable, Identifiable, Hashable, Sendable {
@@ -426,7 +443,8 @@ extension LedgerState {
             confirmBeforeDelete: true,
             defaultHideZeroRows: false,
             confirmAndPreviewBeforeImport: true,
-            autoCheckUpdates: true
+            autoCheckUpdates: true,
+            autoFillFixedActuals: true
         )
         return LedgerState(
             version: 1,
@@ -457,6 +475,18 @@ extension LedgerState {
     /// Like handleUpdateBudget in App.tsx, it also becomes the category's default budget and
     /// updates linked recurring rules that still carried the old default (or 0).
     mutating func setBudget(_ amount: Double, categoryId: String, monthKey: String) {
+        // Budgets driven by a scheduled recurring rule vary per month: a typed value only
+        // overrides this month (budgetManual), like handleUpdateBudget on Windows.
+        if recurringRules.contains(where: { $0.active && $0.categoryId == categoryId && $0.isScheduled }) {
+            if let idx = monthlyBudgets.firstIndex(where: { $0.monthKey == monthKey && $0.categoryId == categoryId }) {
+                monthlyBudgets[idx].budget = amount
+                monthlyBudgets[idx].budgetManual = true
+            } else {
+                monthlyBudgets.append(MonthlyBudgetEntry(monthKey: monthKey, categoryId: categoryId, budget: amount,
+                                                         directActual: nil, budgetManual: true))
+            }
+            return
+        }
         let oldDefault = categories.first(where: { $0.id == categoryId })?.defaultBudget ?? 0
         if let idx = monthlyBudgets.firstIndex(where: { $0.monthKey == monthKey && $0.categoryId == categoryId }) {
             monthlyBudgets[idx].budget = amount
@@ -473,9 +503,24 @@ extension LedgerState {
     }
 }
 
+extension LedgerState {
+    /// Makes a scheduled category's budget follow the recurring schedule again this month.
+    mutating func resetScheduledBudget(categoryId: String, monthKey: String) {
+        for i in monthlyBudgets.indices
+        where monthlyBudgets[i].monthKey == monthKey && monthlyBudgets[i].categoryId == categoryId {
+            monthlyBudgets[i].budgetManual = false
+        }
+    }
+}
+
 enum MonthKey {
     static func format(year: Int, month: Int) -> String {
         String(format: "%04d-%02d", year, month)
+    }
+
+    /// Current calendar month as YYYY-MM (local time) — currentMonthKey() on Windows.
+    static func current(_ now: Date = Date(), calendar: Calendar = .current) -> String {
+        format(year: calendar.component(.year, from: now), month: calendar.component(.month, from: now))
     }
 
     static let shortMonthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",

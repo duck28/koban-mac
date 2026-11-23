@@ -9,6 +9,8 @@ struct RecurringView: View {
     @State private var amount = ""
     @State private var frequency: RecurrenceFrequency = .monthly
     @State private var dayOfMonth = "1"
+    @State private var startDate: String?
+    @State private var startMonth: String?
     @State private var amountInvalid = false
     @FocusState private var amountFocused: Bool
 
@@ -31,14 +33,16 @@ struct RecurringView: View {
         let active = visibleRules.filter(\.active)
         let outflow = active.filter { $0.type == .expense }.reduce(0) { $0 + $1.monthlyEquivalent }
         let income = active.filter { $0.type == .income }.reduce(0) { $0 + $1.monthlyEquivalent }
+        let dueThisMonth = active.filter { $0.type == .expense }
+            .reduce(0) { $0 + ($1.amountDue(inMonth: monthKey) ?? 0) }
 
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header(monthKey: monthKey)
-                addForm(state: state, workspace: workspace, currency: currency)
-                summary(outflow: outflow, income: income, activeCount: active.count,
-                        total: visibleRules.count, currency: currency)
-                rulesList(visibleRules, state: state, currency: currency)
+                addForm(state: state, workspace: workspace, currency: currency, monthKey: monthKey)
+                summary(outflow: outflow, income: income, dueThisMonth: dueThisMonth, monthKey: monthKey,
+                        activeCount: active.count, total: visibleRules.count, currency: currency)
+                rulesList(visibleRules, state: state, currency: currency, monthKey: monthKey)
             }
             .padding(24)
             .frame(maxWidth: 1152)
@@ -47,6 +51,11 @@ struct RecurringView: View {
         .scrollContentBackground(.hidden)
         .onAppear(perform: ensureValidCategory)
         .onChange(of: workspace) { _, _ in ensureValidCategory() }
+        .onChange(of: frequency) { _, f in
+            let d = ScheduleFormat.defaults(for: f, startDate: startDate, startMonth: startMonth, monthKey: monthKey)
+            if let sd = d.startDate { startDate = sd }
+            if let sm = d.startMonth { startMonth = sm }
+        }
     }
 
     // MARK: Header
@@ -84,7 +93,8 @@ struct RecurringView: View {
 
     // MARK: Add form
 
-    private func addForm(state: LedgerState, workspace: ActiveWorkspace, currency: String) -> some View {
+    private func addForm(state: LedgerState, workspace: ActiveWorkspace, currency: String,
+                         monthKey: String) -> some View {
         let groups: [TxOptionGroup<String>] = state.groups
             .filter { workspace.includes($0.mode) }
             .map { grp in
@@ -114,6 +124,18 @@ struct RecurringView: View {
         let freq = TxField(label: L10n.t("recurring.freqLabel")) {
             TxSelect(options: Self.frequencyOptions, selection: $frequency)
         }
+        let startLabel = frequency == .biweekly ? L10n.t("recurring.startWeekLabel")
+            : frequency == .monthly ? "" : L10n.t("recurring.startMonthLabel")
+        let start = Group {
+            if frequency != .monthly {
+                TxField(label: startLabel) {
+                    RecurringStartPickers(frequency: frequency, startDate: startDate, startMonth: startMonth,
+                                          monthKey: monthKey, compact: false,
+                                          onStartDate: { startDate = $0 }, onStartMonth: { startMonth = $0 })
+                }
+                .fixedSize()
+            }
+        }
         let day = TxField(label: L10n.t("recurring.dayRangeLabel")) {
             TextField("", text: $dayOfMonth)
                 .multilineTextAlignment(.center)
@@ -139,12 +161,17 @@ struct RecurringView: View {
                 desc.frame(minWidth: 170).layoutPriority(2)
                 amountField.frame(minWidth: 105, maxWidth: 160)
                 freq.frame(minWidth: 105, maxWidth: 160)
-                day
+                start
+                if frequency != .biweekly { day }
                 add
             }
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .bottom, spacing: 12) { category; desc }
-                HStack(alignment: .bottom, spacing: 12) { amountField; freq; day; add }
+                HStack(alignment: .bottom, spacing: 12) {
+                    amountField; freq; start
+                    if frequency != .biweekly { day }
+                    add
+                }
             }
         }
         .padding(16)
@@ -155,14 +182,21 @@ struct RecurringView: View {
 
     // MARK: Summary banner
 
-    private func summary(outflow: Double, income: Double, activeCount: Int, total: Int,
-                         currency: String) -> some View {
+    private func summary(outflow: Double, income: Double, dueThisMonth: Double, monthKey: String,
+                         activeCount: Int, total: Int, currency: String) -> some View {
         HStack(spacing: 12) {
             FlowLayout(spacing: 16) {
                 HStack(spacing: 8) {
                     ZIcon("repeat", size: 16).foregroundStyle(Zen.indigo)
                     (Text("\(L10n.t("recurring.fixedOutflow")) ").foregroundStyle(Zen.ink2)
                      + Text("\(KobanFormat.currency(outflow, code: currency))\(L10n.t("recurring.perMonthSuffix"))")
+                        .fontWeight(.bold).foregroundStyle(Zen.ink))
+                        .monospacedDigit()
+                }
+                HStack(spacing: 6) {
+                    Text("·").foregroundStyle(Zen.ink2)
+                    (Text("\(L10n.tf("recurring.dueInMonth", ["month": monthKey])) ").foregroundStyle(Zen.ink2)
+                     + Text(KobanFormat.currency(dueThisMonth, code: currency))
                         .fontWeight(.bold).foregroundStyle(Zen.ink))
                         .monospacedDigit()
                 }
@@ -191,7 +225,8 @@ struct RecurringView: View {
 
     // MARK: Rules list
 
-    private func rulesList(_ rules: [RecurringRule], state: LedgerState, currency: String) -> some View {
+    private func rulesList(_ rules: [RecurringRule], state: LedgerState, currency: String,
+                           monthKey: String) -> some View {
         let catMap = Dictionary(state.categories.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let grpMap = Dictionary(state.groups.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         return VStack(spacing: 0) {
@@ -207,7 +242,7 @@ struct RecurringView: View {
                     if idx > 0 { Rectangle().fill(Zen.line.opacity(0.6)).frame(height: 1) }
                     let cat = catMap[rule.categoryId]
                     RecurringRuleRow(rule: rule, category: cat, group: cat.flatMap { grpMap[$0.groupId] },
-                                     currency: currency)
+                                     currency: currency, monthKey: monthKey)
                 }
             }
         }
@@ -229,7 +264,8 @@ struct RecurringView: View {
     private func submit() {
         guard let rule = store.state.buildRecurringRule(categoryId: categoryId, description: description,
                                                         amount: amount, frequency: frequency,
-                                                        dayOfMonth: dayOfMonth) else {
+                                                        dayOfMonth: dayOfMonth, startDate: startDate,
+                                                        startMonth: startMonth) else {
             // <input required>: an empty / invalid amount blocks the submit.
             if JSNumber.parseFloat(amount) == nil || (JSNumber.parseFloat(amount) ?? 0) < 0 {
                 amountInvalid = true
@@ -249,7 +285,25 @@ private struct RecurringRuleRow: View {
     let category: CategoryItem?
     let group: CategoryGroup?
     let currency: String
+    let monthKey: String
     @State private var hovering = false
+
+    private var startMissing: Bool {
+        (rule.frequency == .biweekly && rule.startDate == nil)
+            || (rule.monthInterval > 1 && rule.startMonth == nil)
+    }
+
+    private var scheduleLine: String {
+        if startMissing { return L10n.t("recurring.setStart") }
+        guard let dates = rule.occurrenceDates(inMonth: monthKey), !dates.isEmpty else {
+            return L10n.tf("recurring.notThisMonth", ["month": monthKey])
+        }
+        return L10n.tf("recurring.thisMonth", [
+            "month": monthKey,
+            "dates": dates.map(ScheduleFormat.shortDate).joined(separator: ", "),
+            "amount": KobanFormat.currency(Double(dates.count) * rule.amount, code: currency),
+        ])
+    }
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -284,17 +338,31 @@ private struct RecurringRuleRow: View {
                 HStack(spacing: 8) {
                     Text(rule.description)
                         .font(.zen(12, .medium)).foregroundStyle(Zen.ink).lineLimit(1).truncationMode(.tail)
-                    Text(L10n.t(rule.type == .income ? "tx.filterIncome" : "recurring.fixedBadge"))
-                        .font(.zen(10, .medium))
-                        .foregroundStyle(rule.type == .income ? Zen.positive : Zen.ink2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(rule.type == .income ? Zen.positive.opacity(0.15) : Zen.raised,
-                                    in: RoundedRectangle(cornerRadius: 4))
-                        .fixedSize()
+                    HStack(spacing: 4) {
+                        ZIcon("repeat", size: 11, weight: .regular)
+                        Text(L10n.t(rule.type == .income ? "tx.filterIncome" : "recurring.fixedBadge"))
+                    }
+                    .font(.zen(10, .medium))
+                    .foregroundStyle(rule.type == .income ? Zen.positive : Zen.indigo)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(rule.type == .income ? Zen.positive.opacity(0.15) : Zen.indigo.opacity(0.12),
+                                in: RoundedRectangle(cornerRadius: 4))
+                    .fixedSize()
                 }
-                Text("\(group.map { L10n.groupName($0) } ?? L10n.t("finance.category")) · \(category.map { L10n.categoryName($0) } ?? rule.description)")
-                    .font(.zen(11)).foregroundStyle(Zen.ink3).lineLimit(1).truncationMode(.tail)
+                HStack(spacing: 6) {
+                    Text("\(group.map { L10n.groupName($0) } ?? L10n.t("finance.category")) · \(category.map { L10n.categoryName($0) } ?? rule.description)")
+                        .lineLimit(1).truncationMode(.tail)
+                    Text("·")
+                    HStack(spacing: 4) {
+                        ZIcon("calendar.badge.clock", size: 11, weight: .regular)
+                        Text(scheduleLine).monospacedDigit().lineLimit(1)
+                    }
+                    .foregroundStyle(startMissing ? Zen.accent : Zen.ink3)
+                    .help(startMissing ? L10n.t("recurring.startMissingTip") : "")
+                    .fixedSize()
+                }
+                .font(.zen(11)).foregroundStyle(Zen.ink3)
             }
         }
     }
@@ -303,23 +371,37 @@ private struct RecurringRuleRow: View {
         HStack(spacing: 8) {
             TxSelect(options: RecurringView.frequencyOptions,
                      selection: Binding(get: { rule.frequency },
-                                        set: { store.updateRecurringRule(rule.id, patch: .init(frequency: $0)) }),
+                                        set: { f in
+                                            let d = ScheduleFormat.defaults(for: f, startDate: rule.startDate,
+                                                                            startMonth: rule.startMonth, monthKey: monthKey)
+                                            store.updateRecurringRule(rule.id, patch: .init(
+                                                frequency: f,
+                                                startDate: d.startDate.map { Optional($0) },
+                                                startMonth: d.startMonth.map { Optional($0) }))
+                                        }),
                      height: 28, radius: 4, fontSize: 11, textColor: Zen.ink2, fullWidth: false)
 
-            HStack(spacing: 4) {
-                Text(L10n.t("recurring.dayLabel")).font(.zen(11)).foregroundStyle(Zen.ink3)
-                RuleNumberField(value: Double(rule.dayOfMonth), fontSize: 11, weight: .regular, color: Zen.ink,
-                                alignment: .center, width: 48, placeholder: "") { text in
-                    store.updateRecurringRule(rule.id, patch: .init(dayOfMonth: RecurringRule.clampDay(text)))
+            RecurringStartPickers(frequency: rule.frequency, startDate: rule.startDate, startMonth: rule.startMonth,
+                                  monthKey: monthKey,
+                                  onStartDate: { store.updateRecurringRule(rule.id, patch: .init(startDate: .some($0))) },
+                                  onStartMonth: { store.updateRecurringRule(rule.id, patch: .init(startMonth: .some($0))) })
+
+            if rule.frequency != .biweekly {
+                HStack(spacing: 4) {
+                    Text(L10n.t("recurring.dayLabel")).font(.zen(11)).foregroundStyle(Zen.ink3)
+                    RuleNumberField(value: Double(rule.dayOfMonth), fontSize: 11, weight: .regular, color: Zen.ink,
+                                    alignment: .center, width: 48, placeholder: "") { text in
+                        store.updateRecurringRule(rule.id, patch: .init(dayOfMonth: RecurringRule.clampDay(text)))
+                    }
+                    .help(L10n.t("recurring.dayLabel"))
                 }
-                .help(L10n.t("recurring.dayLabel"))
             }
 
             HStack(spacing: 4) {
                 Text(currency).font(.zen(11)).foregroundStyle(Zen.ink3)
-                RuleNumberField(value: rule.amount, fontSize: 12, weight: .semibold,
+                RuleNumberField(value: rule.amount, display: NumberParsing.editable, fontSize: 12, weight: .semibold,
                                 color: rule.type == .income ? Zen.positive : Zen.ink,
-                                alignment: .trailing, width: 96, placeholder: "0.00") { text in
+                                alignment: .trailing, width: 96, placeholder: "0") { text in
                     store.updateRecurringRule(rule.id, patch: .init(amount: JSNumber.parseFloat(text) ?? 0))
                 }
                 .help("Recurring amount (syncs with monthly budget)")
@@ -335,6 +417,8 @@ private struct RecurringRuleRow: View {
 /// onChange handler, and shows the stored (clamped) value again once it loses focus.
 private struct RuleNumberField: View {
     let value: Double
+    /// Text shown for `value` (JSNumber.string, or NumberParsing.editable to show 0 as blank).
+    var display: (Double) -> String = JSNumber.string
     var fontSize: CGFloat
     var weight: Font.Weight
     var color: Color
@@ -344,6 +428,7 @@ private struct RuleNumberField: View {
     let onEdit: (String) -> Void
 
     @State private var text = ""
+    @State private var hovering = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -356,14 +441,17 @@ private struct RuleNumberField: View {
             .padding(.horizontal, alignment == .center ? 6 : 8)
             .frame(width: width, height: 28)
             .background(Zen.raised, in: RoundedRectangle(cornerRadius: 4))
-            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Zen.line, lineWidth: 1))
+            // Always boxed so it reads as editable; a stronger border on hover / focus.
+            .overlay(RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(focused ? Zen.ink2 : hovering ? Zen.ink3 : Zen.line, lineWidth: 1))
+            .onHover { hovering = $0 }
             .focused($focused)
-            .onAppear { text = JSNumber.string(value) }
-            .onChange(of: value) { _, new in if !focused { text = JSNumber.string(new) } }
+            .onAppear { text = display(value) }
+            .onChange(of: value) { _, new in if !focused { text = display(new) } }
             .onChange(of: text) { _, new in
-                if focused && new != JSNumber.string(value) { onEdit(new) }
+                if focused && new != display(value) { onEdit(new.isEmpty ? "0" : new) }
             }
-            .onChange(of: focused) { _, isFocused in if !isFocused { text = JSNumber.string(value) } }
+            .onChange(of: focused) { _, isFocused in if !isFocused { text = display(value) } }
             .onSubmit { focused = false }
     }
 }

@@ -18,6 +18,14 @@ struct CategoryComputedRow: Identifiable, Hashable, Sendable {
     var txCount: Int
     var deductibleActual: Double
     var vatAmount: Double
+    /// Budget comes from a scheduled recurring rule (bi-weekly / bi-monthly / quarterly / yearly).
+    var budgetFromSchedule: Bool = false
+    /// Budget typed by hand this month although a recurring schedule exists.
+    var budgetOverridesSchedule: Bool = false
+    /// Category is marked as a fixed cost (anchor toggle).
+    var isFixedCost: Bool = false
+    /// Actual is the Budget filled in automatically (fixed cost, no transactions, no typed Actual).
+    var autoActual: Bool = false
 
     var id: String { category.id }
 }
@@ -97,6 +105,16 @@ extension LedgerState {
             monthBudgets[mb.categoryId] = mb // last entry wins, like Map.set in TS
         }
 
+        // Fixed costs: Actual follows Budget (setting, absent ⇒ on)
+        let autoFillFixed = settings.autoFillFixedActuals ?? true
+
+        // Recurring rules with a start week / month: the budget varies per month
+        var scheduledBudgetByCat: [String: Double] = [:]
+        for r in recurringRules where r.active && r.amount > 0 && r.isScheduled {
+            guard let amt = r.amountDue(inMonth: monthKey) else { continue }
+            scheduledBudgetByCat[r.categoryId, default: 0] += amt
+        }
+
         var txByCategory: [String: TxStats] = [:]
         for tx in transactions where tx.monthKey == monthKey && workspace.includes(tx.mode) {
             var cur = txByCategory[tx.categoryId] ?? TxStats()
@@ -118,10 +136,17 @@ extension LedgerState {
                 .filter { $0.groupId == group.id }
                 .map { cat in
                     let mb = monthBudgets[cat.id]
-                    let budget = mb?.budget ?? cat.defaultBudget
+                    let scheduledBudget = scheduledBudgetByCat[cat.id]
+                    let budgetManual = mb?.budgetManual ?? false
+                    let budgetFromSchedule = scheduledBudget != nil && !budgetManual
+                    let budget = budgetFromSchedule ? scheduledBudget! : (mb?.budget ?? cat.defaultBudget)
                     let stats = txByCategory[cat.id] ?? TxStats()
                     let directActual = mb?.directActual
-                    let actual = directActual ?? stats.sum
+                    let isFixedCost = cat.isFixedCost ?? false
+                    let autoActual = autoFillFixed && isFixedCost && directActual == nil && stats.count == 0
+                    // A typed or auto-filled Actual is not backed by transactions: derive VAT/deductible from it
+                    let derivedActual = directActual ?? (autoActual ? budget : nil)
+                    let actual = derivedActual ?? stats.sum
                     let difference = group.kind == .income ? actual - budget : budget - actual
 
                     let catTaxRate = cat.taxRate ?? 0
@@ -129,7 +154,7 @@ extension LedgerState {
 
                     let deductibleActual: Double
                     let vatAmount: Double
-                    if directActual != nil {
+                    if derivedActual != nil {
                         deductibleActual = group.kind != .income ? actual * (catDedPct / 100) : 0
                         vatAmount = catTaxRate > 0 ? actual - actual / (1 + catTaxRate / 100) : 0
                     } else {
@@ -147,7 +172,11 @@ extension LedgerState {
                         difference: difference,
                         txCount: stats.count,
                         deductibleActual: deductibleActual,
-                        vatAmount: vatAmount
+                        vatAmount: vatAmount,
+                        budgetFromSchedule: budgetFromSchedule,
+                        budgetOverridesSchedule: scheduledBudget != nil && budgetManual,
+                        isFixedCost: isFixedCost,
+                        autoActual: autoActual
                     )
                 }
 

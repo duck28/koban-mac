@@ -299,6 +299,12 @@ final class LedgerStore {
         update { $0.setBudget(amount, categoryId: categoryId, monthKey: key) }
     }
 
+    /// Makes a scheduled category's budget follow the recurring schedule again this month.
+    func resetScheduledBudget(categoryId: String) {
+        let key = state.activeMonthKey
+        update { $0.resetScheduledBudget(categoryId: categoryId, monthKey: key) }
+    }
+
     func setDirectActual(_ amount: Double?, categoryId: String) {
         let key = state.activeMonthKey
         update { $0.setDirectActual(amount, categoryId: categoryId, monthKey: key) }
@@ -306,6 +312,10 @@ final class LedgerStore {
 
     func renameCategory(_ id: String, to name: String) {
         update { $0.renameCategory(id, to: name) }
+    }
+
+    func toggleCategoryFixed(_ id: String) {
+        update { $0.toggleCategoryFixed(id) }
     }
 
     func toggleCategoryRecurring(_ id: String) {
