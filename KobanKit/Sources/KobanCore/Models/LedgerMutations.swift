@@ -143,6 +143,15 @@ extension LedgerState {
     mutating func applyBudgetsToAllMonths(from monthKey: String) {
         let year = settings.activeYear
         for cat in categories {
+            if recurringRules.contains(where: { $0.active && $0.amount > 0 && $0.categoryId == cat.id && $0.isScheduled }) {
+                for m in 1...12 {
+                    let mk = MonthKey.format(year: year, month: m)
+                    if let idx = monthlyBudgets.firstIndex(where: { $0.monthKey == mk && $0.categoryId == cat.id }) {
+                        monthlyBudgets[idx].budgetManual = false
+                    }
+                }
+                continue
+            }
             let budget = monthlyBudgets.first(where: { $0.monthKey == monthKey && $0.categoryId == cat.id })?.budget
                 ?? cat.defaultBudget
             for m in 1...12 {
@@ -170,6 +179,20 @@ extension LedgerState {
 
         var copied = 0
         for cat in categories {
+            let scheduledRules = recurringRules.filter { $0.active && $0.amount > 0 && $0.categoryId == cat.id && $0.isScheduled }
+            if !scheduledRules.isEmpty {
+                let targetAmt = scheduledRules.reduce(0.0) { $0 + ($1.amountDue(inMonth: target) ?? 0) }
+                if let idx = monthlyBudgets.firstIndex(where: { $0.monthKey == target && $0.categoryId == cat.id }) {
+                    monthlyBudgets[idx].budget = targetAmt
+                    monthlyBudgets[idx].budgetManual = false
+                    if targetAmt == 0 { monthlyBudgets[idx].directActual = nil }
+                } else {
+                    monthlyBudgets.append(MonthlyBudgetEntry(monthKey: target, categoryId: cat.id,
+                                                             budget: targetAmt, directActual: nil, budgetManual: false))
+                }
+                copied += 1
+                continue
+            }
             guard let src = sourceRows[cat.id] else { continue }
             let actual: Double? = scope == .budgetsAndActuals ? src.actual : nil
             if let idx = monthlyBudgets.firstIndex(where: { $0.monthKey == target && $0.categoryId == cat.id }) {
@@ -204,5 +227,83 @@ extension LedgerState {
             monthlyBudgets[i].directActual = nil
         }
         transactions.insert(tx, at: 0)
+    }
+
+    /// Sets (or clears with `nil`) a savings category's target account.
+    mutating func setCategoryTargetAccount(_ categoryId: String, targetAccountId: String?) {
+        guard let idx = categories.firstIndex(where: { $0.id == categoryId }) else { return }
+        categories[idx].targetAccountId = targetAccountId
+    }
+
+    /// Reorders a category within its group or moves it into another group, re-indexing `order`.
+    mutating func reorderCategories(
+        draggedCategoryId: String,
+        targetGroupId: String,
+        targetCategoryId: String?,
+        position: ReorderPosition,
+        baseOrderIds: [String]? = nil
+    ) {
+        guard let dragged = categories.first(where: { $0.id == draggedCategoryId }),
+              let targetGroup = groups.first(where: { $0.id == targetGroupId }) else { return }
+        if targetCategoryId == draggedCategoryId { return }
+
+        let sourceGroupId = dragged.groupId
+        let targetMembers = categories
+            .filter { $0.groupId == targetGroup.id && $0.id != dragged.id }
+            .sorted { $0.order < $1.order }
+
+        var orderedTarget: [CategoryItem] = []
+        if let baseOrderIds, !baseOrderIds.isEmpty {
+            let byId = Dictionary(uniqueKeysWithValues: targetMembers.map { ($0.id, $0) })
+            var seen = Set<String>()
+            for id in baseOrderIds where id != dragged.id && !seen.contains(id) {
+                if let item = byId[id] {
+                    orderedTarget.append(item)
+                    seen.insert(id)
+                }
+            }
+            for item in targetMembers where !seen.contains(item.id) {
+                orderedTarget.append(item)
+            }
+        } else {
+            orderedTarget = targetMembers
+        }
+
+        var updatedDragged = dragged
+        updatedDragged.groupId = targetGroup.id
+        updatedDragged.kind = targetGroup.kind
+        updatedDragged.mode = targetGroup.mode
+
+        var insertIdx = orderedTarget.count
+        if let targetCategoryId,
+           let idx = orderedTarget.firstIndex(where: { $0.id == targetCategoryId }) {
+            insertIdx = position == .before ? idx : idx + 1
+        }
+        orderedTarget.insert(updatedDragged, at: insertIdx)
+
+        var orderById: [String: Int] = [:]
+        for (idx, item) in orderedTarget.enumerated() {
+            orderById[item.id] = idx
+        }
+
+        if sourceGroupId != targetGroup.id {
+            let remainingSource = categories
+                .filter { $0.groupId == sourceGroupId && $0.id != dragged.id }
+                .sorted { $0.order < $1.order }
+            for (idx, item) in remainingSource.enumerated() {
+                orderById[item.id] = idx
+            }
+        }
+
+        for i in categories.indices {
+            if categories[i].id == dragged.id {
+                categories[i] = updatedDragged
+                categories[i].order = orderById[dragged.id] ?? 0
+            } else if let nextOrder = orderById[categories[i].id] {
+                categories[i].order = nextOrder
+            }
+        }
+
+        settings.worksheetSortBy = .manual
     }
 }

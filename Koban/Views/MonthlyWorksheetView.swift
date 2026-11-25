@@ -10,6 +10,14 @@ struct MonthlyWorksheetView: View {
     @State private var editFocus = EditFocus()
     /// Group whose inline "add category" form is open.
     @State private var addingGroupId: String?
+    @State private var budgetW: CGFloat = 86
+    @State private var actualW: CGFloat = 86
+    @State private var diffW: CGFloat = 78
+    @State private var leftPanePct: CGFloat = 50
+    @State private var dragStartColWidth: CGFloat? = nil
+    @State private var dragStartSplitPct: CGFloat? = nil
+    @State private var resizingCol: ResizableWorksheetCol? = nil
+    @State private var resizingSplit = false
 
     enum DeleteTarget: Identifiable {
         case category(id: String, name: String)
@@ -27,18 +35,30 @@ struct MonthlyWorksheetView: View {
         let workspace = settings.activeWorkspace
         let summary = store.monthSummary(monthKey: state.activeMonthKey, workspace: workspace)
         let hideZero = hideZeroRows ?? (settings.defaultHideZeroRows ?? false)
+        let sortBy = settings.worksheetSortBy ?? .manual
+        let sortDir = settings.worksheetSortDir ?? .asc
         let prevKey = adjacentKey(-1), nextKey = adjacentKey(1)
         let monthEmpty = summary.incomeBudget == 0 && summary.incomeActual == 0
             && summary.totalOutflowBudget == 0 && summary.totalOutflowActual == 0
         let showBanner = monthEmpty && (settings.autoPromptCopyOnEmptyMonth ?? true)
             && store.monthHasData(monthKey: prevKey, workspace: workspace)
-        let twoColumns = contentWidth >= 720
+        let singleMinWidth = 170 + budgetW + actualW + diffW + Cols.actions + 40
+        let twoColumns = contentWidth >= max(900, singleMinWidth * 2 + 12)
         let leftGroups = summary.groups.filter { $0.group.column == 0 }
         let rightGroups = summary.groups.filter { $0.group.column != 0 }
-        // Tab order like the Windows DOM: left column, then right; name → budget → actual per row.
+        let hasCustomWidths = budgetW != 86 || actualW != 86 || diffW != 78 || leftPanePct != 50
+        let sortOptions: [(WorksheetSortField, String)] = [
+            (.manual, L10n.t("worksheet.sortManual")),
+            (.name, L10n.t("worksheet.sortName")),
+            (.budget, L10n.t("worksheet.sortBudget")),
+            (.actual, L10n.t("worksheet.sortActual")),
+            (.diff, L10n.t("worksheet.sortDiff")),
+        ]
+        // Tab order matches displayed sort order: left column, then right; name → budget → actual per row.
         let _ = editFocus.order = (leftGroups + rightGroups).flatMap { gs in
-            gs.rows.filter { !(hideZero && $0.budget == 0 && $0.actual == 0 && $0.txCount == 0) }
-                .flatMap { ["\($0.category.id)#name", "\($0.category.id)#budget", "\($0.category.id)#actual"] }
+            let visible = gs.rows.filter { !(hideZero && $0.budget == 0 && $0.actual == 0 && $0.txCount == 0) }
+            let sorted = LedgerState.sortWorksheetRows(visible, by: sortBy, direction: sortDir) { L10n.categoryName($0) }
+            return sorted.flatMap { ["\($0.category.id)#name", "\($0.category.id)#budget", "\($0.category.id)#actual"] }
         }
 
         ScrollViewReader { proxy in
@@ -58,6 +78,59 @@ struct MonthlyWorksheetView: View {
                     }
 
                     FlowLayout(spacing: 8) {
+                        HStack(spacing: 4) {
+                            Menu {
+                                ForEach(sortOptions, id: \.0) { field, label in
+                                    Button {
+                                        let nextDir: WorksheetSortDirection = (field == .name || field == .manual) ? .asc : .desc
+                                        store.setWorksheetSort(by: field, direction: nextDir)
+                                    } label: {
+                                        if sortBy == field {
+                                            Label(label, systemImage: "checkmark")
+                                        } else {
+                                            Text(label)
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    ZIcon("arrow.up.arrow.down", size: 13).foregroundStyle(Zen.ink3)
+                                    Text("\(L10n.t("worksheet.sortLabel")): \(sortOptions.first(where: { $0.0 == sortBy })?.1 ?? "")")
+                                        .font(.zen(12)).foregroundStyle(Zen.ink).lineLimit(1)
+                                    ZIcon("chevron.down", size: 11).foregroundStyle(Zen.ink3)
+                                }
+                                .padding(.horizontal, 10)
+                                .frame(height: 32)
+                                .background(Zen.surface, in: RoundedRectangle(cornerRadius: 8))
+                                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Zen.line, lineWidth: 1))
+                                .contentShape(Rectangle())
+                            }
+                            .menuStyle(.button)
+                            .buttonStyle(.plain)
+                            .menuIndicator(.hidden)
+
+                            if sortBy != .manual {
+                                Button {
+                                    store.setWorksheetSort(by: sortBy, direction: sortDir == .asc ? .desc : .asc)
+                                } label: {
+                                    ZIcon(sortDir == .asc ? "arrow.up" : "arrow.down", size: 13)
+                                        .foregroundStyle(Zen.indigo)
+                                }
+                                .buttonStyle(.zen(.outline, padding: 8))
+                            }
+                        }
+
+                        if hasCustomWidths {
+                            Button { resetAllWidths() } label: {
+                                HStack(spacing: 6) {
+                                    ZIcon("arrow.counterclockwise", size: 13)
+                                    Text(L10n.t("worksheet.resetWidthsBtn"))
+                                }
+                            }
+                            .buttonStyle(.zenOutline)
+                            .help(L10n.t("worksheet.resizeColTip"))
+                        }
+
                         Button { hideZeroRows = !hideZero } label: {
                             HStack(spacing: 6) {
                                 ZIcon(hideZero ? "eye" : "eye.slash", size: 14)
@@ -123,31 +196,91 @@ struct MonthlyWorksheetView: View {
 
                 let left = leftGroups
                 let right = rightGroups
-                let summaryBox = BudgetSummaryBox(summary: summary)
+                let colMetrics = WorksheetColWidths(budget: budgetW, actual: actualW, diff: diffW)
+                let summaryBox = BudgetSummaryBox(
+                    summary: summary,
+                    cols: colMetrics,
+                    sortBy: sortBy,
+                    sortDir: sortDir,
+                    resizingCol: resizingCol,
+                    onCycleSort: cycleSort,
+                    onResizeCol: handleColResize,
+                    onEndResizeCol: commitColWidths,
+                    onResetColWidths: resetNumericWidths
+                )
 
                 // Lazy per row: group cards are split into header / row / footer items so only the
                 // rows on screen are built (each item draws its slice of the card outline).
                 if twoColumns {
-                    HStack(alignment: .top, spacing: 24) {
+                    let avail = max(400, contentWidth - 12)
+                    let leftW = (avail * leftPanePct / 100).rounded()
+                    let rightW = avail - leftW
+                    HStack(alignment: .top, spacing: 0) {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(left.enumerated()), id: \.element.id) { idx, gs in
-                                groupItems(gs, first: idx == 0, hideZero: hideZero, workspace: workspace)
+                                groupItems(gs, first: idx == 0, hideZero: hideZero, workspace: workspace,
+                                           sortBy: sortBy, sortDir: sortDir, cols: colMetrics)
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .top)
+                        .frame(width: leftW, alignment: .top)
+
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(width: 12)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 1)
+                                    .fill(resizingSplit ? Zen.indigo : Zen.line.opacity(0.75))
+                                    .frame(width: 2)
+                                    .padding(.vertical, 8)
+                            }
+                            .contentShape(Rectangle())
+                            .onHover { hovering in
+                                if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                            }
+                            .gesture(
+                                DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                                    .onChanged { val in
+                                        let startPct = dragStartSplitPct ?? leftPanePct
+                                        if dragStartSplitPct == nil {
+                                            dragStartSplitPct = startPct
+                                            resizingSplit = true
+                                        }
+                                        let startPx = (startPct / 100) * avail
+                                        let next = ((startPx + val.translation.width) / avail * 100).rounded()
+                                        leftPanePct = min(66, max(34, next))
+                                    }
+                                    .onEnded { _ in
+                                        dragStartSplitPct = nil
+                                        resizingSplit = false
+                                        commitColWidths()
+                                    }
+                            )
+                            .onTapGesture(count: 2) {
+                                leftPanePct = 50
+                                commitColWidths()
+                            }
+                            .help(L10n.t("worksheet.resizeSplitTip"))
+
                         LazyVStack(spacing: 0) {
                             summaryBox
-                            ForEach(right) { groupItems($0, first: false, hideZero: hideZero, workspace: workspace) }
+                            ForEach(right) {
+                                groupItems($0, first: false, hideZero: hideZero, workspace: workspace,
+                                           sortBy: sortBy, sortDir: sortDir, cols: colMetrics)
+                            }
                         }
-                        .frame(maxWidth: .infinity, alignment: .top)
+                        .frame(width: rightW, alignment: .top)
                     }
                 } else {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(left.enumerated()), id: \.element.id) { idx, gs in
-                            groupItems(gs, first: idx == 0, hideZero: hideZero, workspace: workspace)
+                            groupItems(gs, first: idx == 0, hideZero: hideZero, workspace: workspace,
+                                       sortBy: sortBy, sortDir: sortDir, cols: colMetrics)
                         }
                         summaryBox.padding(.top, left.isEmpty ? 0 : 20)
-                        ForEach(right) { groupItems($0, first: false, hideZero: hideZero, workspace: workspace) }
+                        ForEach(right) {
+                            groupItems($0, first: false, hideZero: hideZero, workspace: workspace,
+                                       sortBy: sortBy, sortDir: sortDir, cols: colMetrics)
+                        }
                     }
                 }
 
@@ -166,11 +299,15 @@ struct MonthlyWorksheetView: View {
         }
         .scrollContentBackground(.hidden)
         .onAppear {
+            syncWidthsFromSettings(settings.worksheetColumnWidths)
             // Tabbing into a row that is off-screen scrolls it into view.
             editFocus.onMove = { cellID in
                 let rowID = String(cellID.prefix(while: { $0 != "#" }))
                 withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(rowID) }
             }
+        }
+        .onChange(of: settings.worksheetColumnWidths) { _, newWidths in
+            syncWidthsFromSettings(newWidths)
         }
         }
         .environment(editFocus)
@@ -192,18 +329,34 @@ struct MonthlyWorksheetView: View {
 
     @ViewBuilder
     private func groupItems(_ gs: GroupComputedSummary, first: Bool, hideZero: Bool,
-                            workspace: ActiveWorkspace) -> some View {
-        let rows = gs.rows.filter { !(hideZero && $0.budget == 0 && $0.actual == 0 && $0.txCount == 0) }
+                            workspace: ActiveWorkspace,
+                            sortBy: WorksheetSortField, sortDir: WorksheetSortDirection,
+                            cols: WorksheetColWidths) -> some View {
+        let filtered = gs.rows.filter { !(hideZero && $0.budget == 0 && $0.actual == 0 && $0.txCount == 0) }
+        let rows = LedgerState.sortWorksheetRows(filtered, by: sortBy, direction: sortDir) { L10n.categoryName($0) }
+        let sortedRowIds = rows.map(\.category.id)
         // Tax badges only from the Windows `xl` breakpoint (1280 px window) up.
         let showTax = contentWidth >= 976
         let adding = addingGroupId == gs.group.id
         GroupHeader(gs: gs, showMode: workspace == .combined,
+                    cols: cols, sortBy: sortBy, sortDir: sortDir, resizingCol: resizingCol,
+                    sortedRowIds: sortedRowIds,
+                    onCycleSort: cycleSort,
+                    onResizeCol: handleColResize,
+                    onEndResizeCol: commitColWidths,
+                    onResetColWidths: resetNumericWidths,
+                    onDropAtTop: { draggedId in
+                        store.reorderCategories(draggedCategoryId: draggedId, targetGroupId: gs.group.id,
+                                                targetCategoryId: sortedRowIds.first, position: .before,
+                                                baseOrderIds: sortedRowIds)
+                    },
                     onAdd: { addingGroupId = adding ? nil : gs.group.id },
                     onDelete: { requestDelete(.group(id: gs.group.id, name: gs.group.name)) })
             .cardPiece(top: true)
             .padding(.top, first ? 0 : 20)
         ForEach(Array(rows.enumerated()), id: \.element.id) { idx, row in
-            CategoryRow(row: row, isLast: idx == rows.count - 1, showTaxBadge: showTax) {
+            CategoryRow(row: row, isLast: idx == rows.count - 1, showTaxBadge: showTax,
+                        cols: cols, sortedRowIds: sortedRowIds) {
                 requestDelete(.category(id: row.category.id, name: row.category.name))
             }
             .cardPiece()
@@ -211,7 +364,78 @@ struct MonthlyWorksheetView: View {
         if adding {
             AddCategoryForm(gs: gs) { addingGroupId = nil }.cardPiece()
         }
-        GroupFooter(gs: gs).cardPiece(bottom: true)
+        GroupFooter(gs: gs, cols: cols) { draggedId in
+            store.reorderCategories(draggedCategoryId: draggedId, targetGroupId: gs.group.id,
+                                    targetCategoryId: nil, position: .after, baseOrderIds: sortedRowIds)
+        }
+        .cardPiece(bottom: true)
+    }
+
+    private func syncWidthsFromSettings(_ w: WorksheetColumnWidths?) {
+        guard let w else { return }
+        budgetW = CGFloat(w.budget)
+        actualW = CGFloat(w.actual)
+        diffW = CGFloat(w.diff)
+        leftPanePct = CGFloat(w.leftPanePct ?? 50)
+    }
+
+    private func cycleSort(_ field: WorksheetSortField) {
+        let sortBy = store.state.settings.worksheetSortBy ?? .manual
+        let sortDir = store.state.settings.worksheetSortDir ?? .asc
+        let defaultDir: WorksheetSortDirection = field == .name ? .asc : .desc
+        if sortBy != field {
+            store.setWorksheetSort(by: field, direction: defaultDir)
+        } else if sortDir == defaultDir {
+            store.setWorksheetSort(by: field, direction: defaultDir == .asc ? .desc : .asc)
+        } else {
+            store.setWorksheetSort(by: .manual, direction: .asc)
+        }
+    }
+
+    private func handleColResize(_ col: ResizableWorksheetCol, dx: CGFloat) {
+        let current: CGFloat = switch col {
+        case .budget: budgetW
+        case .actual: actualW
+        case .diff: diffW
+        }
+        if dragStartColWidth == nil {
+            dragStartColWidth = current
+            resizingCol = col
+        }
+        let start = dragStartColWidth ?? current
+        let minW: CGFloat = col == .diff ? 60 : 64
+        let next = min(180, max(minW, (start - dx).rounded()))
+        switch col {
+        case .budget: budgetW = next
+        case .actual: actualW = next
+        case .diff: diffW = next
+        }
+    }
+
+    private func commitColWidths() {
+        dragStartColWidth = nil
+        resizingCol = nil
+        store.setWorksheetColumnWidths(WorksheetColumnWidths(
+            budget: Double(budgetW),
+            actual: Double(actualW),
+            diff: Double(diffW),
+            leftPanePct: Double(leftPanePct)
+        ))
+    }
+
+    private func resetNumericWidths() {
+        budgetW = 86
+        actualW = 86
+        diffW = 78
+        commitColWidths()
+    }
+
+    private func resetAllWidths() {
+        budgetW = 86
+        actualW = 86
+        diffW = 78
+        leftPanePct = 50
+        commitColWidths()
     }
 
     private func requestDelete(_ target: DeleteTarget) {
@@ -251,14 +475,93 @@ struct MonthlyWorksheetView: View {
     }
 }
 
-// MARK: - Grid metrics (grid-cols-[1fr_84px_84px_84px_48px] gap-1.5)
+// MARK: - Grid metrics & column resizing
+
+private enum ResizableWorksheetCol {
+    case budget, actual, diff
+}
+
+private struct WorksheetColWidths {
+    var budget: CGFloat = 86
+    var actual: CGFloat = 86
+    var diff: CGFloat = 78
+}
 
 private enum Cols {
-    static let value: CGFloat = 84
-    static let actions: CGFloat = 54
-    static let gap: CGFloat = 6
+    static let actions: CGFloat = 52
+    static let gap: CGFloat = 4
     /// Width & height of each row icon slot (recurring, fixed cost, reset), so icons line up.
-    static let iconSlot: CGFloat = 22
+    static let iconSlot: CGFloat = 20
+}
+
+private struct WorksheetColResizeHeader: View {
+    let label: String
+    let field: WorksheetSortField
+    let col: ResizableWorksheetCol
+    let width: CGFloat
+    let sortBy: WorksheetSortField
+    let sortDir: WorksheetSortDirection
+    let resizing: Bool
+    var textColor: Color = Zen.ink2
+    var activeColor: Color = Zen.ink
+    var arrowColor: Color = Zen.indigo
+    var handleIdleColor: Color = Zen.line.opacity(0.75)
+    var handleActiveColor: Color = Zen.indigo
+    var helpText: String
+    let onSort: () -> Void
+    let onResize: (CGFloat) -> Void
+    let onEndResize: () -> Void
+    let onReset: () -> Void
+
+    @State private var hoveringHandle = false
+
+    var body: some View {
+        let isActive = sortBy == field
+        HStack(spacing: 2) {
+            Spacer(minLength: 0)
+            Button(action: onSort) {
+                HStack(spacing: 3) {
+                    Text(label).lineLimit(1)
+                    if isActive {
+                        ZIcon(sortDir == .asc ? "arrow.up" : "arrow.down", size: 10, weight: .semibold)
+                            .foregroundStyle(arrowColor)
+                    }
+                }
+                .foregroundStyle(isActive ? activeColor : textColor)
+                .fontWeight(isActive ? .semibold : .regular)
+            }
+            .buttonStyle(.plain)
+            .help("\(L10n.t("worksheet.sortLabel")): \(label)")
+        }
+        .frame(width: width, alignment: .trailing)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Color.clear)
+                .frame(width: 8)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill((resizing || hoveringHandle) ? handleActiveColor : handleIdleColor)
+                        .frame(width: 2, height: 14)
+                }
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    if hovering && !hoveringHandle {
+                        NSCursor.resizeLeftRight.push()
+                    } else if !hovering && hoveringHandle {
+                        NSCursor.pop()
+                    }
+                    hoveringHandle = hovering
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                        .onChanged { onResize($0.translation.width) }
+                        .onEnded { _ in onEndResize() }
+                )
+                .onTapGesture(count: 2, perform: onReset)
+                .help(helpText)
+                .offset(x: -4)
+        }
+    }
 }
 
 // MARK: - Group block
@@ -276,12 +579,24 @@ extension View {
 private struct GroupHeader: View {
     let gs: GroupComputedSummary
     let showMode: Bool
+    let cols: WorksheetColWidths
+    let sortBy: WorksheetSortField
+    let sortDir: WorksheetSortDirection
+    let resizingCol: ResizableWorksheetCol?
+    let sortedRowIds: [String]
+    let onCycleSort: (WorksheetSortField) -> Void
+    let onResizeCol: (ResizableWorksheetCol, CGFloat) -> Void
+    let onEndResizeCol: () -> Void
+    let onResetColWidths: () -> Void
+    let onDropAtTop: (String) -> Void
     let onAdd: () -> Void
     let onDelete: () -> Void
 
+    @State private var headerTargeted = false
+
     var body: some View {
         HStack(spacing: Cols.gap) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Circle().fill(Color(hexString: gs.group.color)).frame(width: 10, height: 10)
                 Text(L10n.groupName(gs.group).uppercased())
                     .font(.zen(11, .semibold))
@@ -298,28 +613,92 @@ private struct GroupHeader: View {
                         .background(Zen.surface, in: RoundedRectangle(cornerRadius: 4))
                 }
                 Spacer(minLength: 0)
+                Button { onCycleSort(.name) } label: {
+                    HStack(spacing: 2) {
+                        Text("A–Z").font(.zen(10))
+                        if sortBy == .name {
+                            ZIcon(sortDir == .asc ? "arrow.up" : "arrow.down", size: 9, weight: .semibold)
+                                .foregroundStyle(Zen.indigo)
+                        }
+                    }
+                    .foregroundStyle(sortBy == .name ? Zen.ink : Zen.ink3)
+                    .fontWeight(sortBy == .name ? .semibold : .regular)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(sortBy == .name ? Zen.surface : .clear, in: RoundedRectangle(cornerRadius: 4))
+                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(sortBy == .name ? Zen.line : .clear, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .help("\(L10n.t("worksheet.sortLabel")): \(L10n.t("worksheet.sortName"))")
             }
-            headerLabel(L10n.t("finance.budget"))
-            headerLabel(L10n.t("finance.actual"))
-            headerLabel(L10n.t("worksheet.diffShort")).padding(.trailing, 4)
+            .padding(.trailing, 2)
+
+            WorksheetColResizeHeader(
+                label: L10n.t("finance.budget"),
+                field: .budget,
+                col: .budget,
+                width: cols.budget,
+                sortBy: sortBy,
+                sortDir: sortDir,
+                resizing: resizingCol == .budget,
+                helpText: L10n.t("worksheet.resizeColTip"),
+                onSort: { onCycleSort(.budget) },
+                onResize: { onResizeCol(.budget, $0) },
+                onEndResize: onEndResizeCol,
+                onReset: onResetColWidths
+            )
+            .font(.zen(11))
+
+            WorksheetColResizeHeader(
+                label: L10n.t("finance.actual"),
+                field: .actual,
+                col: .actual,
+                width: cols.actual,
+                sortBy: sortBy,
+                sortDir: sortDir,
+                resizing: resizingCol == .actual,
+                helpText: L10n.t("worksheet.resizeColTip"),
+                onSort: { onCycleSort(.actual) },
+                onResize: { onResizeCol(.actual, $0) },
+                onEndResize: onEndResizeCol,
+                onReset: onResetColWidths
+            )
+            .font(.zen(11))
+
+            WorksheetColResizeHeader(
+                label: L10n.t("worksheet.diffShort"),
+                field: .diff,
+                col: .diff,
+                width: cols.diff,
+                sortBy: sortBy,
+                sortDir: sortDir,
+                resizing: resizingCol == .diff,
+                helpText: L10n.t("worksheet.resizeColTip"),
+                onSort: { onCycleSort(.diff) },
+                onResize: { onResizeCol(.diff, $0) },
+                onEndResize: onEndResizeCol,
+                onReset: onResetColWidths
+            )
+            .font(.zen(11))
+            .padding(.trailing, 4)
+
             HStack(spacing: 2) {
                 ZenMiniButton(icon: "plus", size: 14, tint: Zen.ink2, help: L10n.t("worksheet.addCategoryTip"), action: onAdd)
                 ZenMiniButton(icon: "trash", size: 13, tint: Zen.ink2, hoverTint: Zen.accent, help: L10n.t("worksheet.deleteGroupTip"), action: onDelete)
             }
             .frame(width: Cols.actions, alignment: .trailing)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(minHeight: 42)
-        .background(Zen.raised.opacity(0.7))
-        .overlay(alignment: .bottom) { Rectangle().fill(Zen.line).frame(height: 1) }
-    }
-
-    private func headerLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.zen(11))
-            .foregroundStyle(Zen.ink2)
-            .frame(width: Cols.value, alignment: .trailing)
+        .background(headerTargeted ? Zen.indigo.opacity(0.12) : Zen.raised.opacity(0.7))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(headerTargeted ? Zen.indigo : Zen.line).frame(height: headerTargeted ? 2 : 1)
+        }
+        .dropDestination(for: String.self) { items, _ in
+            guard let draggedId = items.first else { return false }
+            onDropAtTop(draggedId)
+            return true
+        } isTargeted: { headerTargeted = $0 }
     }
 }
 
@@ -364,25 +743,35 @@ private struct AddCategoryForm: View {
 
 private struct GroupFooter: View {
     let gs: GroupComputedSummary
+    let cols: WorksheetColWidths
+    let onDropAtEnd: (String) -> Void
+    @State private var footerTargeted = false
 
     var body: some View {
         HStack(spacing: Cols.gap) {
             Text(L10n.tf("worksheet.totalGroup", ["group": L10n.groupName(gs.group)])).foregroundStyle(Zen.ink).lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text(KobanFormat.number(gs.totalBudget)).foregroundStyle(Zen.ink2)
-                .padding(.horizontal, 6).frame(width: Cols.value, alignment: .trailing)
-            Text(KobanFormat.number(gs.totalActual)).foregroundStyle(Zen.ink)
-                .padding(.horizontal, 6).frame(width: Cols.value, alignment: .trailing)
-            Text(signed(gs.totalDifference)).foregroundStyle(Zen.diff(gs.totalDifference))
-                .padding(.trailing, 4).frame(width: Cols.value, alignment: .trailing)
+            Text(KobanFormat.number(gs.totalBudget)).foregroundStyle(Zen.ink2).lineLimit(1)
+                .padding(.horizontal, 6).frame(width: cols.budget, alignment: .trailing)
+            Text(KobanFormat.number(gs.totalActual)).foregroundStyle(Zen.ink).lineLimit(1)
+                .padding(.horizontal, 6).frame(width: cols.actual, alignment: .trailing)
+            Text(signed(gs.totalDifference)).foregroundStyle(Zen.diff(gs.totalDifference)).lineLimit(1)
+                .padding(.trailing, 4).frame(width: cols.diff, alignment: .trailing)
             Color.clear.frame(width: Cols.actions, height: 1)
         }
         .font(.zen(12, .semibold))
         .zenAmount()
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Zen.app.opacity(0.8))
-        .overlay(alignment: .top) { Rectangle().fill(Zen.line).frame(height: 1) }
+        .background(footerTargeted ? Zen.indigo.opacity(0.12) : Zen.app.opacity(0.8))
+        .overlay(alignment: .top) {
+            Rectangle().fill(footerTargeted ? Zen.indigo : Zen.line).frame(height: footerTargeted ? 2 : 1)
+        }
+        .dropDestination(for: String.self) { items, _ in
+            guard let draggedId = items.first else { return false }
+            onDropAtEnd(draggedId)
+            return true
+        } isTargeted: { footerTargeted = $0 }
     }
 }
 
@@ -397,8 +786,11 @@ private struct CategoryRow: View {
     let row: CategoryComputedRow
     let isLast: Bool
     let showTaxBadge: Bool
+    let cols: WorksheetColWidths
+    let sortedRowIds: [String]
     let onDelete: () -> Void
     @State private var hovering = false
+    @State private var dropTargeted = false
 
     var body: some View {
         let cat = row.category
@@ -406,45 +798,84 @@ private struct CategoryRow: View {
         let displayName = L10n.categoryName(cat)
 
         HStack(spacing: Cols.gap) {
-            // Name + badges, then the row icons in fixed slots so they line up across rows
-            HStack(spacing: 6) {
+            // Strictly single-line Name + badges + compact icons
+            HStack(spacing: 4) {
+                ZIcon("line.3.horizontal", size: 11, weight: .regular)
+                    .foregroundStyle(Zen.ink3.opacity(hovering ? 0.9 : 0.45))
+                    .frame(width: 14, height: 22)
+                    .contentShape(Rectangle())
+                    .draggable(cat.id)
+                    .help(L10n.t("worksheet.dragRowTip"))
+
                 InlineTextField(value: displayName, cellID: "\(cat.id)#name") { store.renameCategory(cat.id, to: $0) }
                     .help(displayName)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(minWidth: 44, maxWidth: .infinity, alignment: .leading)
 
-                // Variable-width badges (left of the icon slots, so they never shift the icons)
-                HStack(spacing: 6) {
+                // Variable-width badges (truncate cleanly if narrow)
+                HStack(spacing: 4) {
                     if row.group.kind == .savings {
                         let target = store.state.accounts.first { $0.id == cat.targetAccountId }
-                        HStack(spacing: 2) {
-                            ZIcon("arrow.right", size: 11, weight: .regular)
-                            Text(target.map { L10n.accountName($0) } ?? "?").lineLimit(1).truncationMode(.tail)
+                        let eligibleAccounts = store.state.accounts.filter {
+                            $0.id == cat.targetAccountId || ($0.mode == cat.mode && $0.classification != .liability)
                         }
-                        .font(.zen(10))
-                        .foregroundStyle(target == nil ? Zen.accent : Zen.indigo)
-                        .padding(.horizontal, 6).padding(.vertical, 1)
-                        .background((target == nil ? Zen.accent : Zen.indigo).opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
-                        .frame(maxWidth: 110, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
+                        Menu {
+                            Button {
+                                store.setCategoryTargetAccount(cat.id, targetAccountId: nil)
+                            } label: {
+                                if cat.targetAccountId == nil || cat.targetAccountId?.isEmpty == true {
+                                    Label("?", systemImage: "checkmark")
+                                } else {
+                                    Text("?")
+                                }
+                            }
+                            ForEach(eligibleAccounts) { acc in
+                                Button {
+                                    store.setCategoryTargetAccount(cat.id, targetAccountId: acc.id)
+                                } label: {
+                                    if cat.targetAccountId == acc.id {
+                                        Label(L10n.accountName(acc), systemImage: "checkmark")
+                                    } else {
+                                        Text(L10n.accountName(acc))
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 2) {
+                                ZIcon("arrow.right", size: 10, weight: .regular)
+                                Text(target.map { L10n.accountName($0) } ?? "?")
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                            }
+                            .font(.zen(10))
+                            .foregroundStyle(target == nil ? Zen.accent : Zen.indigo)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background((target == nil ? Zen.accent : Zen.indigo).opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+                            .frame(maxWidth: 112, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .menuStyle(.button)
+                        .buttonStyle(.plain)
+                        .menuIndicator(.hidden)
                         .help(target.map { L10n.tf("worksheet.savingsTargetTip", ["account": L10n.accountName($0)]) }
                               ?? L10n.t("worksheet.savingsNoTargetTip"))
                     }
                     if row.budgetOverridesSchedule {
-                        ZenMiniButton(icon: "calendar.badge.clock", size: 13, tint: Zen.indigo.opacity(0.8),
+                        ZenMiniButton(icon: "calendar.badge.clock", size: 12, tint: Zen.indigo.opacity(0.8),
                                       hoverTint: Zen.indigo, help: L10n.t("worksheet.manualBudgetTip")) {
                             store.resetScheduledBudget(categoryId: cat.id)
                         }
                     } else if row.budgetFromSchedule {
-                        ZIcon("calendar.badge.clock", size: 13, weight: .regular)
+                        ZIcon("calendar.badge.clock", size: 12, weight: .regular)
                             .foregroundStyle(Zen.indigo.opacity(0.8))
-                            .padding(4)
+                            .padding(3)
                             .help(L10n.t("worksheet.scheduledBudgetTip"))
                     }
                     if row.txCount > 0 && row.directActual == nil {
                         Text(L10n.tf("worksheet.txCountSuffix", ["count": row.txCount]))
                             .font(.zen(10)).zenAmount()
                             .foregroundStyle(Zen.ink2)
-                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .lineLimit(1)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(Zen.raised, in: RoundedRectangle(cornerRadius: 4))
                             .fixedSize()
                             .help(L10n.tf("worksheet.txCountTip", ["count": row.txCount]))
@@ -459,12 +890,11 @@ private struct CategoryRow: View {
                             .fixedSize()
                     }
                 }
-                .layoutPriority(1)
 
-                // Fixed icon slots: recurring · fixed cost · reset Actual (empty slot when absent)
+                // Compact icon slots: recurring · fixed cost · reset Actual (omit reset spacer when absent)
                 HStack(spacing: 2) {
                     Button { store.toggleCategoryRecurring(cat.id) } label: {
-                        ZIcon("repeat", size: 13, weight: .regular)
+                        ZIcon("repeat", size: 12, weight: .regular)
                             .foregroundStyle(recurring ? Zen.indigo : Zen.ink2.opacity(0.8))
                             .frame(width: Cols.iconSlot, height: Cols.iconSlot)
                             .background(recurring ? Zen.indigo.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
@@ -477,7 +907,7 @@ private struct CategoryRow: View {
                     if row.group.kind != .income {
                         let fixed = row.isFixedCost
                         Button { store.toggleCategoryFixed(cat.id) } label: {
-                            AnchorIcon(size: 13)
+                            AnchorIcon(size: 12)
                                 .foregroundStyle(fixed ? Zen.indigo : Zen.ink2.opacity(0.8))
                                 .frame(width: Cols.iconSlot, height: Cols.iconSlot)
                                 .background(fixed ? Zen.indigo.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 4))
@@ -491,38 +921,38 @@ private struct CategoryRow: View {
                     }
 
                     if row.directActual != nil {
-                        ZenMiniButton(icon: "arrow.counterclockwise", size: 13, tint: Zen.ink2.opacity(0.85),
+                        ZenMiniButton(icon: "arrow.counterclockwise", size: 12, tint: Zen.ink2.opacity(0.85),
                                       help: L10n.t("worksheet.manualActualTip")) {
                             store.setDirectActual(nil, categoryId: cat.id)
                         }
                         .frame(width: Cols.iconSlot, height: Cols.iconSlot)
-                    } else {
-                        Color.clear.frame(width: Cols.iconSlot, height: Cols.iconSlot)
                     }
                 }
                 .fixedSize()
+                .layoutPriority(1)
             }
-            .padding(.trailing, 4)
+            .padding(.trailing, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
 
             InlineNumberField(value: row.budget, color: Zen.ink2, cellID: "\(cat.id)#budget") {
                 store.setBudget($0 ?? 0, categoryId: cat.id)
             }
-            .frame(width: Cols.value)
+            .frame(width: cols.budget)
             InlineNumberField(value: (row.actual * 100).rounded() / 100,
                               color: row.autoActual ? Zen.indigo : Zen.ink, weight: .medium,
                               italic: row.autoActual, cellID: "\(cat.id)#actual") {
                 store.setDirectActual($0 ?? 0, categoryId: cat.id)
             }
-            .frame(width: Cols.value)
+            .frame(width: cols.actual)
             .help(row.autoActual ? L10n.t("worksheet.autoActualTip") : "")
 
             Text(signed(row.difference))
                 .font(.zen(12, .medium))
                 .zenAmount()
                 .foregroundStyle(Zen.diff(row.difference))
+                .lineLimit(1)
                 .padding(.trailing, 4)
-                .frame(width: Cols.value, alignment: .trailing)
+                .frame(width: cols.diff, alignment: .trailing)
 
             HStack(spacing: 4) {
                 ZenMiniButton(icon: "receipt", size: 13, tint: hovering ? Zen.ink2 : Zen.ink2.opacity(0.8), help: L10n.t("worksheet.logTxTip")) {
@@ -533,14 +963,28 @@ private struct CategoryRow: View {
             .frame(width: Cols.actions, height: 20, alignment: .trailing)
         }
         .font(.zen(12))
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .frame(minHeight: 36)
-        .background(hovering ? Zen.raised.opacity(0.6) : .clear)
+        .background(dropTargeted ? Zen.indigo.opacity(0.14) : (hovering ? Zen.raised.opacity(0.6) : .clear))
         .overlay(alignment: .bottom) {
-            if !isLast { Rectangle().fill(Zen.line.opacity(0.6)).frame(height: 1) }
+            if dropTargeted {
+                Rectangle().fill(Zen.indigo).frame(height: 2)
+            } else if !isLast {
+                Rectangle().fill(Zen.line.opacity(0.6)).frame(height: 1)
+            }
         }
         .onHover { hovering = $0 }
+        .dropDestination(for: String.self) { items, location in
+            guard let draggedId = items.first, draggedId != cat.id else { return false }
+            let pos: ReorderPosition = location.y < 18 ? .before : .after
+            store.reorderCategories(draggedCategoryId: draggedId,
+                                    targetGroupId: row.group.id,
+                                    targetCategoryId: cat.id,
+                                    position: pos,
+                                    baseOrderIds: sortedRowIds)
+            return true
+        } isTargeted: { dropTargeted = $0 }
         .id(cat.id)
     }
 
@@ -734,15 +1178,80 @@ private struct NameEditor: View {
 
 private struct BudgetSummaryBox: View {
     let summary: MonthSummaryMetrics
-    private let col: CGFloat = 92
+    let cols: WorksheetColWidths
+    let sortBy: WorksheetSortField
+    let sortDir: WorksheetSortDirection
+    let resizingCol: ResizableWorksheetCol?
+    let onCycleSort: (WorksheetSortField) -> Void
+    let onResizeCol: (ResizableWorksheetCol, CGFloat) -> Void
+    let onEndResizeCol: () -> Void
+    let onResetColWidths: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Text(L10n.t("worksheet.budgetSummary").uppercased()).fontWeight(.semibold).frame(maxWidth: .infinity, alignment: .leading)
-                Text(L10n.t("finance.budget").uppercased()).opacity(0.8).frame(width: col, alignment: .trailing)
-                Text(L10n.t("finance.actual").uppercased()).opacity(0.8).frame(width: col, alignment: .trailing)
-                Text(L10n.t("worksheet.difference").uppercased()).opacity(0.8).frame(width: col, alignment: .trailing)
+            HStack(spacing: Cols.gap) {
+                Text(L10n.t("worksheet.budgetSummary").uppercased())
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                WorksheetColResizeHeader(
+                    label: L10n.t("finance.budget").uppercased(),
+                    field: .budget,
+                    col: .budget,
+                    width: cols.budget,
+                    sortBy: sortBy,
+                    sortDir: sortDir,
+                    resizing: resizingCol == .budget,
+                    textColor: Zen.onInk.opacity(0.8),
+                    activeColor: Zen.onInk,
+                    arrowColor: Zen.onInk,
+                    handleIdleColor: Zen.onInk.opacity(0.35),
+                    handleActiveColor: Zen.onInk,
+                    helpText: L10n.t("worksheet.resizeColTip"),
+                    onSort: { onCycleSort(.budget) },
+                    onResize: { onResizeCol(.budget, $0) },
+                    onEndResize: onEndResizeCol,
+                    onReset: onResetColWidths
+                )
+                WorksheetColResizeHeader(
+                    label: L10n.t("finance.actual").uppercased(),
+                    field: .actual,
+                    col: .actual,
+                    width: cols.actual,
+                    sortBy: sortBy,
+                    sortDir: sortDir,
+                    resizing: resizingCol == .actual,
+                    textColor: Zen.onInk.opacity(0.8),
+                    activeColor: Zen.onInk,
+                    arrowColor: Zen.onInk,
+                    handleIdleColor: Zen.onInk.opacity(0.35),
+                    handleActiveColor: Zen.onInk,
+                    helpText: L10n.t("worksheet.resizeColTip"),
+                    onSort: { onCycleSort(.actual) },
+                    onResize: { onResizeCol(.actual, $0) },
+                    onEndResize: onEndResizeCol,
+                    onReset: onResetColWidths
+                )
+                WorksheetColResizeHeader(
+                    label: L10n.t("worksheet.difference").uppercased(),
+                    field: .diff,
+                    col: .diff,
+                    width: cols.diff,
+                    sortBy: sortBy,
+                    sortDir: sortDir,
+                    resizing: resizingCol == .diff,
+                    textColor: Zen.onInk.opacity(0.8),
+                    activeColor: Zen.onInk,
+                    arrowColor: Zen.onInk,
+                    handleIdleColor: Zen.onInk.opacity(0.35),
+                    handleActiveColor: Zen.onInk,
+                    helpText: L10n.t("worksheet.resizeColTip"),
+                    onSort: { onCycleSort(.diff) },
+                    onResize: { onResizeCol(.diff, $0) },
+                    onEndResize: onEndResizeCol,
+                    onReset: onResetColWidths
+                )
             }
             .font(.zen(11))
             .tracking(0.9)
@@ -756,25 +1265,30 @@ private struct BudgetSummaryBox: View {
             row(L10n.t("sidebar.totalExpenses"), summary.totalOutflowBudget, summary.totalOutflowActual, summary.totalOutflowDifference, actualColor: Zen.ink)
             Rectangle().fill(Zen.line).frame(height: 1)
 
-            HStack(spacing: 6) {
-                HStack(spacing: 8) {
-                    Text(L10n.t("finance.net").uppercased()).foregroundStyle(Zen.ink)
+            HStack(spacing: Cols.gap) {
+                HStack(spacing: 6) {
+                    Text(L10n.t("finance.net").uppercased()).foregroundStyle(Zen.ink).lineLimit(1)
                     Text(L10n.tf("worksheet.retainedPct", ["pct": String(format: "%.1f", summary.savingsRatePct)]))
                         .font(.zen(11))
                         .zenAmount()
                         .foregroundStyle(Zen.ink2)
+                        .lineLimit(1)
+                        .fixedSize()
                         .padding(.horizontal, 8).padding(.vertical, 2)
                         .background(Zen.surface, in: Capsule())
                         .overlay(Capsule().strokeBorder(Zen.line, lineWidth: 1))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Text(KobanFormat.number(summary.netBudget)).foregroundStyle(Zen.ink2).frame(width: col, alignment: .trailing)
+                Text(KobanFormat.number(summary.netBudget)).foregroundStyle(Zen.ink2).lineLimit(1)
+                    .frame(width: cols.budget, alignment: .trailing)
                 Text(KobanFormat.number(summary.netActual))
                     .foregroundStyle(summary.netActual >= 0 ? Zen.positive : Zen.accent)
-                    .frame(width: col, alignment: .trailing)
+                    .lineLimit(1)
+                    .frame(width: cols.actual, alignment: .trailing)
                 Text(signed(summary.netDifference))
                     .foregroundStyle(summary.netDifference >= 0 ? Zen.positive : Zen.accent)
-                    .frame(width: col, alignment: .trailing)
+                    .lineLimit(1)
+                    .frame(width: cols.diff, alignment: .trailing)
             }
             .font(.zen(13, .semibold))
             .zenAmount()
@@ -789,12 +1303,15 @@ private struct BudgetSummaryBox: View {
     }
 
     private func row(_ label: String, _ budget: Double, _ actual: Double, _ diff: Double, actualColor: Color) -> some View {
-        HStack(spacing: 6) {
-            Text(label).fontWeight(.medium).foregroundStyle(Zen.ink).frame(maxWidth: .infinity, alignment: .leading)
-            Text(KobanFormat.number(budget)).foregroundStyle(Zen.ink2).frame(width: col, alignment: .trailing)
-            Text(KobanFormat.number(actual)).fontWeight(.semibold).foregroundStyle(actualColor).frame(width: col, alignment: .trailing)
-            Text(signed(diff)).fontWeight(.medium).foregroundStyle(diff >= 0 ? Zen.positive : Zen.accent)
-                .frame(width: col, alignment: .trailing)
+        HStack(spacing: Cols.gap) {
+            Text(label).fontWeight(.medium).foregroundStyle(Zen.ink).lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(KobanFormat.number(budget)).foregroundStyle(Zen.ink2).lineLimit(1)
+                .frame(width: cols.budget, alignment: .trailing)
+            Text(KobanFormat.number(actual)).fontWeight(.semibold).foregroundStyle(actualColor).lineLimit(1)
+                .frame(width: cols.actual, alignment: .trailing)
+            Text(signed(diff)).fontWeight(.medium).foregroundStyle(diff >= 0 ? Zen.positive : Zen.accent).lineLimit(1)
+                .frame(width: cols.diff, alignment: .trailing)
         }
         .font(.zen(13))
         .zenAmount()

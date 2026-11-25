@@ -308,6 +308,7 @@ extension YearlyPlanSchedule {
     /// Option label — the Recurring view's frequency names.
     var label: String {
         switch self {
+        case .weekly: return L10n.t("recurring.freqWeekly")
         case .biweekly: return L10n.t("recurring.freqBiweekly")
         case .monthly: return L10n.t("recurring.freqMonthly")
         case .bimonthly: return L10n.t("recurring.freqBimonthly")
@@ -319,6 +320,7 @@ extension YearlyPlanSchedule {
     /// Short prefix for the per-payment field ("Mo:", "Per 2 wk:", …).
     var perPaymentShort: String {
         switch self {
+        case .weekly: return L10n.t("yearly.perWeeklyShort")
         case .biweekly: return L10n.t("yearly.perBiweeklyShort")
         case .bimonthly: return L10n.t("yearly.perBimonthlyShort")
         case .quarterly: return L10n.t("yearly.perQuarterShort")

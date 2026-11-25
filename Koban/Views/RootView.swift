@@ -90,7 +90,7 @@ struct MainView: View {
                             Text(L10n.t("settings.updates.download").replacingOccurrences(of: "{version}", with: latest))
                         }
                         .font(.zen(11, .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Zen.onPositive)
                         .padding(.horizontal, 12)
                         .frame(height: 28)
                         .background(Zen.positive, in: RoundedRectangle(cornerRadius: 6))
@@ -126,7 +126,7 @@ struct MainView: View {
                     } label: {
                         Text("Review")
                             .font(.zen(11, .medium))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Zen.onIndigo)
                             .padding(.horizontal, 12)
                             .frame(height: 28)
                             .background(Zen.indigo, in: RoundedRectangle(cornerRadius: 6))

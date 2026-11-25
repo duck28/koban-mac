@@ -303,6 +303,13 @@ extension AppSettings {
     var backupDirIsForeign: Bool { !backupDir.trimmingCharacters(in: .whitespaces).isEmpty && localBackupDir.isEmpty }
 }
 
+struct WorksheetColumnWidths: Codable, Hashable, Sendable {
+    var budget: Double
+    var actual: Double
+    var diff: Double
+    var leftPanePct: Double? = nil
+}
+
 struct AppSettings: Codable, Hashable, Sendable {
     var setupCompleted: Bool
     var setupMode: ProfileSetupMode
@@ -312,6 +319,9 @@ struct AppSettings: Codable, Hashable, Sendable {
     var themePalette: ThemePalette?
     var density: UiDensity?
     var highContrastAmounts: Bool?
+    var worksheetColumnWidths: WorksheetColumnWidths? = nil
+    var worksheetSortBy: WorksheetSortField? = nil
+    var worksheetSortDir: WorksheetSortDirection? = nil
     var backupDir: String
     var autoBackup: Bool
     var maxBackups: Int
@@ -477,7 +487,7 @@ extension LedgerState {
     mutating func setBudget(_ amount: Double, categoryId: String, monthKey: String) {
         // Budgets driven by a scheduled recurring rule vary per month: a typed value only
         // overrides this month (budgetManual), like handleUpdateBudget on Windows.
-        if recurringRules.contains(where: { $0.active && $0.categoryId == categoryId && $0.isScheduled }) {
+        if recurringRules.contains(where: { $0.active && $0.amount > 0 && $0.categoryId == categoryId && $0.isScheduled }) {
             if let idx = monthlyBudgets.firstIndex(where: { $0.monthKey == monthKey && $0.categoryId == categoryId }) {
                 monthlyBudgets[idx].budget = amount
                 monthlyBudgets[idx].budgetManual = true
@@ -490,15 +500,21 @@ extension LedgerState {
         let oldDefault = categories.first(where: { $0.id == categoryId })?.defaultBudget ?? 0
         if let idx = monthlyBudgets.firstIndex(where: { $0.monthKey == monthKey && $0.categoryId == categoryId }) {
             monthlyBudgets[idx].budget = amount
+            monthlyBudgets[idx].budgetManual = false
         } else {
-            monthlyBudgets.append(MonthlyBudgetEntry(monthKey: monthKey, categoryId: categoryId, budget: amount))
+            monthlyBudgets.append(MonthlyBudgetEntry(monthKey: monthKey, categoryId: categoryId, budget: amount,
+                                                     directActual: nil, budgetManual: false))
         }
         if let cIdx = categories.firstIndex(where: { $0.id == categoryId }) {
             categories[cIdx].defaultBudget = amount
         }
         for i in recurringRules.indices where recurringRules[i].categoryId == categoryId
             && (recurringRules[i].amount == 0 || abs(recurringRules[i].amount - oldDefault) < 0.01) {
-            recurringRules[i].amount = amount
+            if recurringRules[i].isScheduled, let dates = recurringRules[i].occurrenceDates(inMonth: monthKey), !dates.isEmpty {
+                recurringRules[i].amount = ((amount / Double(dates.count)) * 100).rounded() / 100
+            } else {
+                recurringRules[i].amount = amount
+            }
         }
     }
 }

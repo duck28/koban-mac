@@ -47,13 +47,62 @@ final class SavingsTransferTests: XCTestCase {
     }
 
     func testYearlyPlanSchedules() throws {
+        XCTAssertEqual(YearlyPlanSchedule.weekly.periodsPerYear, 52)
         XCTAssertEqual(YearlyPlanSchedule.biweekly.periodsPerYear, 26)
         XCTAssertEqual(YearlyPlanSchedule.quarterly.periodsPerYear, 4)
+        XCTAssertEqual(YearlyPlanSchedule(frequency: .weekly), .weekly)
         XCTAssertEqual(YearlyPlanSchedule(frequency: .yearly), .annualLump)
         XCTAssertEqual(YearlyPlanSchedule(frequency: .bimonthly), .bimonthly)
         // Values written by the Windows build decode; unknown ones fall back instead of failing
         let decoded = try JSONDecoder().decode([YearlyPlanSchedule].self,
-                                               from: Data(#"["biweekly","quarterly","annual_lump","weekly"]"#.utf8))
+                                               from: Data(#"["biweekly","quarterly","annual_lump","daily"]"#.utf8))
         XCTAssertEqual(decoded, [.biweekly, .quarterly, .annualLump, .monthly])
+    }
+
+    func testWorksheetSavingsFlowIntoTargetAccount() throws {
+        var state = LedgerState.empty()
+        state.groups = [
+            CategoryGroup(id: "g-sav", mode: .home, name: "Savings", kind: .savings, color: "#3F704D", column: 1, order: 0)
+        ]
+        state.categories = [
+            CategoryItem(id: "c-edu", groupId: "g-sav", mode: .home, name: "Education", kind: .savings,
+                         defaultBudget: 0, order: 0, targetAccountId: "a-sav"),
+            CategoryItem(id: "c-sav", groupId: "g-sav", mode: .home, name: "Savings", kind: .savings,
+                         defaultBudget: 0, order: 1, targetAccountId: "a-sav"),
+        ]
+        let autoSav = FinancialAccount(id: "a-sav", name: "Savings", mode: .home, type: .savings, classification: .liquid,
+                                       startingBalance: 1000, currentBalance: 5000, autoTrackTransactions: true,
+                                       includeInNetWorth: true, color: "#3F704D", updatedAt: "2026-11-01")
+        state.accounts = [autoSav]
+        state.monthlyBudgets = [
+            MonthlyBudgetEntry(monthKey: "2026-11", categoryId: "c-edu", budget: 833, directActual: 750),
+            MonthlyBudgetEntry(monthKey: "2026-11", categoryId: "c-sav", budget: 2000),
+        ]
+
+        let transfers = state.worksheetSavingsTransfers(upToMonthKey: "2026-11")
+        let t = try XCTUnwrap(transfers["a-sav"])
+        XCTAssertEqual(t.total, 2750)
+        XCTAssertEqual(t.pendingAfter("2026-11-01"), 2750)
+
+        let novDate = try XCTUnwrap(Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 20)))
+        let autoMetrics = state.netWorthMetrics(workspace: .home, now: novDate)
+        XCTAssertEqual(autoMetrics.accounts.first?.liveBalance, 3750)
+        XCTAssertEqual(autoMetrics.accounts.first?.pendingTransferIn, 2750)
+
+        state.accounts = [
+            FinancialAccount(id: "a-sav", name: "Savings", mode: .home, type: .savings, classification: .liquid,
+                             startingBalance: 1000, currentBalance: 5000, autoTrackTransactions: false,
+                             includeInNetWorth: true, color: "#3F704D", updatedAt: "2026-11-01")
+        ]
+        XCTAssertEqual(state.netWorthMetrics(workspace: .home, now: novDate).accounts.first?.liveBalance, 7750)
+
+        state.accounts[0].updatedAt = "2026-12-01"
+        XCTAssertEqual(state.netWorthMetrics(workspace: .home, now: novDate).accounts.first?.liveBalance, 5000)
+
+        let selfTx = TransactionItem(id: "t-self", date: "2026-11-10", monthKey: "2026-11", mode: .home,
+                                     type: .expense, categoryId: "c-sav", accountId: "a-sav",
+                                     description: "Manual", amount: 400)
+        let selfItem = autoSav.liveBalance(transactions: [selfTx], savingsTargets: state.savingsTargets)
+        XCTAssertEqual(selfItem.liveBalance, 1400)
     }
 }

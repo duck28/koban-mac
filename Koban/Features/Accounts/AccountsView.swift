@@ -445,6 +445,7 @@ struct AccountsView: View {
                         AccountCard(
                             item: item,
                             currency: currency,
+                            allGoals: store.state.savingsGoals,
                             isEditing: editingBalanceId == item.account.id,
                             onStartEdit: { editingBalanceId = item.account.id },
                             onCommit: { value in
@@ -452,6 +453,9 @@ struct AccountsView: View {
                                 editingBalanceId = nil
                             },
                             onCancel: { editingBalanceId = nil },
+                            onUpdateGoalAccount: { goalId, accId in
+                                store.updateGoal(goalId) { $0.linkedAccountId = accId }
+                            },
                             onToggleAuto: {
                                 store.updateAccount(item.account.id) { $0.autoTrackTransactions.toggle() }
                             },
@@ -694,10 +698,12 @@ struct AccountsView: View {
 private struct AccountCard: View {
     let item: AccountComputedItem
     let currency: String
+    let allGoals: [SavingsGoal]
     let isEditing: Bool
     let onStartEdit: () -> Void
     let onCommit: (Double?) -> Void
     let onCancel: () -> Void
+    let onUpdateGoalAccount: (String, String?) -> Void
     let onToggleAuto: () -> Void
     let onToggleNw: () -> Void
     let onInspect: () -> Void
@@ -708,6 +714,16 @@ private struct AccountCard: View {
 
     private var account: FinancialAccount { item.account }
     private var isLiability: Bool { account.classification == .liability }
+
+    private var attachedGoals: [SavingsGoal] {
+        guard !isLiability else { return [] }
+        return allGoals.filter { $0.linkedAccountId == account.id }
+    }
+
+    private var unlinkedGoals: [SavingsGoal] {
+        guard !isLiability else { return [] }
+        return allGoals.filter { $0.mode == account.mode && ($0.linkedAccountId == nil || $0.linkedAccountId?.isEmpty == true) }
+    }
 
     private var classIcon: String {
         switch account.classification {
@@ -724,6 +740,9 @@ private struct AccountCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 topRow
                 balance.padding(.top, 4)
+                if !isLiability && (!attachedGoals.isEmpty || !unlinkedGoals.isEmpty) {
+                    subBucketsSection
+                }
             }
             Spacer(minLength: 0)
             footer
@@ -735,6 +754,107 @@ private struct AccountCard: View {
         .overlay(RoundedRectangle(cornerRadius: 12)
             .strokeBorder(hovering ? Zen.ink3.opacity(0.6) : Zen.line, lineWidth: 1))
         .onHover { hovering = $0 }
+    }
+
+    private var subBucketsSection: some View {
+        let attached = attachedGoals
+        let unlinked = unlinkedGoals
+        let totalAllocated = attached.reduce(0) { $0 + $1.currentAmount }
+        let unallocated = item.liveBalance - totalAllocated
+        let barDenominator = max(item.liveBalance, totalAllocated, 1)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                HStack(spacing: 4) {
+                    ZIcon("target", size: 12).foregroundStyle(Zen.indigo)
+                    Text(L10n.tf("accounts.subBucketsTitle", ["count": attached.count]).uppercased())
+                        .font(.zen(10, .medium)).tracking(0.5).foregroundStyle(Zen.ink3).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                if !attached.isEmpty {
+                    Text("\(L10n.t("accounts.unallocatedBalance")) \(KobanFormat.currency(unallocated, code: currency))")
+                        .font(.zen(10, .medium)).monospacedDigit()
+                        .foregroundStyle(unallocated < 0 ? Zen.accent : Zen.positive)
+                        .lineLimit(1)
+                }
+            }
+
+            if !attached.isEmpty {
+                GeometryReader { geo in
+                    HStack(spacing: 0) {
+                        ForEach(attached) { g in
+                            let w = max(0, max(0, g.currentAmount) / barDenominator) * geo.size.width
+                            if w > 0 {
+                                Rectangle()
+                                    .fill(Color(hexString: g.color))
+                                    .frame(width: w)
+                                    .help("\(L10n.goalName(g)): \(KobanFormat.currency(g.currentAmount, code: currency)) / \(KobanFormat.currency(g.targetAmount, code: currency))")
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+                .frame(height: 8)
+                .background(Zen.raised)
+                .clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(Zen.line.opacity(0.6), lineWidth: 1))
+
+                VStack(spacing: 4) {
+                    ForEach(attached) { g in
+                        HStack(spacing: 6) {
+                            HStack(spacing: 6) {
+                                Circle().fill(Color(hexString: g.color)).frame(width: 8, height: 8)
+                                Text(L10n.goalName(g)).font(.zen(11)).foregroundStyle(Zen.ink).lineLimit(1)
+                            }
+                            Spacer(minLength: 6)
+                            HStack(spacing: 4) {
+                                Text(KobanFormat.currency(g.currentAmount, code: currency))
+                                    .font(.zen(11, .medium)).foregroundStyle(Zen.ink2)
+                                Text("/ \(KobanFormat.number(g.targetAmount))")
+                                    .font(.zen(10)).foregroundStyle(Zen.ink3)
+                                AccHoverIcon(icon: "xmark", size: 11, padding: 2, help: L10n.t("accounts.detachGoalTip")) {
+                                    onUpdateGoalAccount(g.id, nil)
+                                }
+                            }
+                            .monospacedDigit()
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Zen.app, in: RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Zen.line.opacity(0.6), lineWidth: 1))
+                    }
+                }
+            }
+
+            if !unlinked.isEmpty {
+                Menu {
+                    ForEach(unlinked) { g in
+                        Button {
+                            onUpdateGoalAccount(g.id, account.id)
+                        } label: {
+                            Text("\(L10n.goalName(g)) (\(KobanFormat.currency(g.currentAmount, code: currency)))")
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text(L10n.t("accounts.attachGoalPlaceholder"))
+                            .font(.zen(10)).foregroundStyle(Zen.ink2).lineLimit(1)
+                        Spacer()
+                        ZIcon("chevron.down", size: 10).foregroundStyle(Zen.ink3)
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 24)
+                    .background(Zen.app, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Zen.line, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
+                    .contentShape(Rectangle())
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+            }
+        }
+        .padding(.top, 10)
+        .accTopHairline(Zen.line.opacity(0.6))
     }
 
     private var topRow: some View {

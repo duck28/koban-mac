@@ -92,6 +92,15 @@ private struct TxStats {
 }
 
 extension LedgerState {
+    func scheduledBudgetByCategory(inMonth monthKey: String) -> [String: Double] {
+        var scheduled: [String: Double] = [:]
+        for r in recurringRules where r.active && r.amount > 0 && r.isScheduled {
+            guard let amt = r.amountDue(inMonth: monthKey) else { continue }
+            scheduled[r.categoryId, default: 0] += amt
+        }
+        return scheduled
+    }
+
     func monthSummary(monthKey: String, workspace: ActiveWorkspace) -> MonthSummaryMetrics {
         let activeGroups = groups
             .filter { workspace.includes($0.mode) }
@@ -109,11 +118,7 @@ extension LedgerState {
         let autoFillFixed = settings.autoFillFixedActuals ?? true
 
         // Recurring rules with a start week / month: the budget varies per month
-        var scheduledBudgetByCat: [String: Double] = [:]
-        for r in recurringRules where r.active && r.amount > 0 && r.isScheduled {
-            guard let amt = r.amountDue(inMonth: monthKey) else { continue }
-            scheduledBudgetByCat[r.categoryId, default: 0] += amt
-        }
+        let scheduledBudgetByCat = scheduledBudgetByCategory(inMonth: monthKey)
 
         var txByCategory: [String: TxStats] = [:]
         for tx in transactions where tx.monthKey == monthKey && workspace.includes(tx.mode) {
@@ -270,6 +275,36 @@ extension LedgerState {
                 netBudget: s.netBudget,
                 netActual: s.netActual
             )
+        }
+    }
+
+    static func sortWorksheetRows(
+        _ rows: [CategoryComputedRow],
+        by sortBy: WorksheetSortField = .manual,
+        direction sortDir: WorksheetSortDirection = .asc,
+        displayName: (CategoryItem) -> String = \.name
+    ) -> [CategoryComputedRow] {
+        let dir = sortDir == .desc ? -1 : 1
+        return rows.sorted { a, b in
+            if sortBy == .manual {
+                return a.category.order < b.category.order
+            }
+            let cmp: Int
+            switch sortBy {
+            case .manual:
+                cmp = 0
+            case .name:
+                let r = displayName(a.category).localizedStandardCompare(displayName(b.category))
+                cmp = r == .orderedAscending ? -1 : (r == .orderedDescending ? 1 : 0)
+            case .budget:
+                cmp = a.budget < b.budget ? -1 : (a.budget > b.budget ? 1 : 0)
+            case .actual:
+                cmp = a.actual < b.actual ? -1 : (a.actual > b.actual ? 1 : 0)
+            case .diff:
+                cmp = a.difference < b.difference ? -1 : (a.difference > b.difference ? 1 : 0)
+            }
+            if cmp != 0 { return cmp * dir < 0 }
+            return a.category.order < b.category.order
         }
     }
 }

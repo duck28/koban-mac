@@ -75,6 +75,12 @@ extension LedgerState {
     /// but unassigned.
     mutating func deleteAccount(_ id: String) {
         accounts.removeAll { $0.id == id }
+        for i in categories.indices where categories[i].targetAccountId == id {
+            categories[i].targetAccountId = nil
+        }
+        for i in savingsGoals.indices where savingsGoals[i].linkedAccountId == id {
+            savingsGoals[i].linkedAccountId = nil
+        }
         for i in transactions.indices where transactions[i].accountId == id {
             transactions[i].accountId = nil
         }
@@ -112,13 +118,24 @@ extension LedgerState {
     /// Auto-tracked accounts shift their starting balance so start + tx delta = new balance.
     mutating func reconcileAccountBalance(_ item: AccountComputedItem, to newBalance: Double,
                                           today: String = KobanTemplates.today()) {
+        let targets = savingsTargets
+        let ws = worksheetSavingsTransfers()[item.account.id]
+        let wsArg = ws.map { ($0.total, $0.pendingAfter(today), $0.count) }
+        var probeAcc = item.account
+        probeAcc.currentBalance = 0
+        probeAcc.startingBalance = 0
+        probeAcc.updatedAt = today
+        let probePending = probeAcc.liveBalance(transactions: transactions, savingsTargets: targets, worksheetSavings: wsArg).liveBalance
+
         updateAccount(item.account.id) { acc in
             if acc.autoTrackTransactions {
                 acc.startingBalance = newBalance - item.txNetDelta
+                acc.currentBalance = newBalance
             } else {
-                acc.startingBalance = newBalance
+                let nextCurrent = newBalance - probePending
+                acc.startingBalance = nextCurrent
+                acc.currentBalance = nextCurrent
             }
-            acc.currentBalance = newBalance
             acc.updatedAt = today
         }
     }
@@ -181,6 +198,12 @@ extension LedgerState {
     mutating func updateGoalAmount(_ id: String, currentAmount: Double) {
         guard let idx = savingsGoals.firstIndex(where: { $0.id == id }) else { return }
         savingsGoals[idx].currentAmount = currentAmount
+    }
+
+    /// Updates a goal's linked account or other properties.
+    mutating func updateGoal(_ id: String, _ patch: (inout SavingsGoal) -> Void) {
+        guard let idx = savingsGoals.firstIndex(where: { $0.id == id }) else { return }
+        patch(&savingsGoals[idx])
     }
 
     /// handleDeleteGoal.

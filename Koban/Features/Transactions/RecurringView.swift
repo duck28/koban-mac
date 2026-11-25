@@ -16,6 +16,7 @@ struct RecurringView: View {
 
     static var frequencyOptions: [(RecurrenceFrequency, String)] {
         [
+            (.weekly, L10n.t("recurring.freqWeekly")),
             (.biweekly, L10n.t("recurring.freqBiweekly")),
             (.monthly, L10n.t("recurring.freqMonthly")),
             (.bimonthly, L10n.t("recurring.freqBimonthly")),
@@ -124,7 +125,7 @@ struct RecurringView: View {
         let freq = TxField(label: L10n.t("recurring.freqLabel")) {
             TxSelect(options: Self.frequencyOptions, selection: $frequency)
         }
-        let startLabel = frequency == .biweekly ? L10n.t("recurring.startWeekLabel")
+        let startLabel = (frequency == .weekly || frequency == .biweekly) ? L10n.t("recurring.startWeekLabel")
             : frequency == .monthly ? "" : L10n.t("recurring.startMonthLabel")
         let start = Group {
             if frequency != .monthly {
@@ -162,14 +163,14 @@ struct RecurringView: View {
                 amountField.frame(minWidth: 105, maxWidth: 160)
                 freq.frame(minWidth: 105, maxWidth: 160)
                 start
-                if frequency != .biweekly { day }
+                if frequency != .weekly && frequency != .biweekly { day }
                 add
             }
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .bottom, spacing: 12) { category; desc }
                 HStack(alignment: .bottom, spacing: 12) {
                     amountField; freq; start
-                    if frequency != .biweekly { day }
+                    if frequency != .weekly && frequency != .biweekly { day }
                     add
                 }
             }
@@ -290,7 +291,7 @@ private struct RecurringRuleRow: View {
     @State private var confirmingDelete = false
 
     private var startMissing: Bool {
-        (rule.frequency == .biweekly && rule.startDate == nil)
+        ((rule.frequency == .weekly || rule.frequency == .biweekly) && rule.startDate == nil)
             || (rule.monthInterval > 1 && rule.startMonth == nil)
     }
 
@@ -387,7 +388,7 @@ private struct RecurringRuleRow: View {
                                   onStartDate: { store.updateRecurringRule(rule.id, patch: .init(startDate: .some($0))) },
                                   onStartMonth: { store.updateRecurringRule(rule.id, patch: .init(startMonth: .some($0))) })
 
-            if rule.frequency != .biweekly {
+            if rule.frequency != .weekly && rule.frequency != .biweekly {
                 HStack(spacing: 4) {
                     Text(L10n.t("recurring.dayLabel")).font(.zen(11)).foregroundStyle(Zen.ink3)
                     RuleNumberField(value: Double(rule.dayOfMonth), fontSize: 11, weight: .regular, color: Zen.ink,

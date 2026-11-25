@@ -140,7 +140,7 @@ enum ScheduleFormat {
     static func defaults(for frequency: RecurrenceFrequency, startDate: String?, startMonth: String?,
                          monthKey: String) -> (startDate: String?, startMonth: String?) {
         switch frequency {
-        case .biweekly where startDate == nil:
+        case .weekly where startDate == nil, .biweekly where startDate == nil:
             let today = RecurringSchedule.todayISO()
             return (today.hasPrefix(monthKey) ? today : "\(monthKey)-01", nil)
         case .bimonthly, .quarterly, .yearly:
@@ -151,7 +151,7 @@ enum ScheduleFormat {
     }
 }
 
-/// Start week + weekday (bi-weekly) or start month (bi-monthly / quarterly / yearly).
+/// Start week + weekday (weekly / bi-weekly) or start month (bi-monthly / quarterly / yearly).
 struct RecurringStartPickers: View {
     let frequency: RecurrenceFrequency
     let startDate: String?
@@ -165,7 +165,7 @@ struct RecurringStartPickers: View {
         let height: CGFloat = compact ? 28 : 32
         let fontSize: CGFloat = compact ? 11 : 12
         switch frequency {
-        case .biweekly:
+        case .weekly, .biweekly:
             HStack(spacing: 6) {
                 ScheduleStepper(text: ScheduleFormat.weekLabel(startDate) ?? L10n.t("recurring.setStart"),
                                 missing: startDate == nil, height: height, fontSize: fontSize,

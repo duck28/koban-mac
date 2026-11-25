@@ -11,6 +11,8 @@ struct AccountComputedItem: Identifiable, Hashable, Sendable {
     var txCount: Int
     /// Savings moved in from other accounts (savings categories whose target is this account).
     var txTransferInSum: Double = 0
+    /// Transfers & worksheet savings dated on or after the account's last manual valuation.
+    var pendingTransferIn: Double = 0
 
     var id: String { account.id }
 }
@@ -49,6 +51,16 @@ struct NetWorthSummaryMetrics: Hashable, Sendable {
     var historySeries: [NetWorthHistoryPoint]
 }
 
+struct WorksheetSavingsTransfer: Sendable {
+    var total: Double
+    var count: Int
+    var byMonth: [(monthEnd: String, amount: Double)]
+
+    func pendingAfter(_ updatedAt: String) -> Double {
+        byMonth.reduce(0) { $1.monthEnd >= updatedAt ? $0 + $1.amount : $0 }
+    }
+}
+
 extension LedgerState {
     /// categoryId → target account id, for savings categories that have one (savingsTargetMap).
     var savingsTargets: [String: String] {
@@ -58,26 +70,87 @@ extension LedgerState {
         }
         return map
     }
+
+    func worksheetSavingsTransfers(upToMonthKey: String? = nil) -> [String: WorksheetSavingsTransfer] {
+        let catById = Dictionary(categories.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+
+        var txStats: [String: (sum: Double, count: Int)] = [:]
+        for tx in transactions {
+            if let upToMonthKey, tx.monthKey > upToMonthKey { continue }
+            let key = "\(tx.monthKey)::\(tx.categoryId)"
+            var cur = txStats[key] ?? (0, 0)
+            cur.sum += tx.amount
+            cur.count += 1
+            txStats[key] = cur
+        }
+
+        var latestBudgets: [String: MonthlyBudgetEntry] = [:]
+        for mb in monthlyBudgets {
+            if let upToMonthKey, mb.monthKey > upToMonthKey { continue }
+            latestBudgets["\(mb.monthKey)::\(mb.categoryId)"] = mb
+        }
+
+        var scheduledCache: [String: [String: Double]] = [:]
+        var accEntries: [String: (byMonth: [(monthEnd: String, amount: Double)], count: Int)] = [:]
+
+        for (key, mb) in latestBudgets {
+            guard let cat = catById[mb.categoryId], cat.kind == .savings,
+                  let targetId = cat.targetAccountId, !targetId.isEmpty else { continue }
+            let stats = txStats[key] ?? (0, 0)
+            if scheduledCache[mb.monthKey] == nil {
+                scheduledCache[mb.monthKey] = scheduledBudgetByCategory(inMonth: mb.monthKey)
+            }
+            let scheduled = scheduledCache[mb.monthKey]?[cat.id]
+            let effectiveBudget = (scheduled != nil && !(mb.budgetManual ?? false)) ? scheduled! : mb.budget
+
+            let worksheetVal: Double
+            if let direct = mb.directActual {
+                worksheetVal = direct
+            } else if stats.count == 0 {
+                worksheetVal = effectiveBudget
+            } else {
+                worksheetVal = stats.sum
+            }
+
+            let extra = worksheetVal - stats.sum
+            guard abs(extra) > 1e-9 else { continue }
+            var bucket = accEntries[targetId] ?? ([], 0)
+            bucket.byMonth.append(("\(mb.monthKey)-31", extra))
+            bucket.count += 1
+            accEntries[targetId] = bucket
+        }
+
+        var result: [String: WorksheetSavingsTransfer] = [:]
+        for (accId, data) in accEntries {
+            let total = data.byMonth.reduce(0) { $0 + $1.amount }
+            result[accId] = WorksheetSavingsTransfer(total: total, count: data.count, byMonth: data.byMonth)
+        }
+        return result
+    }
 }
 
 extension FinancialAccount {
-    func liveBalance(transactions: [TransactionItem], savingsTargets: [String: String] = [:]) -> AccountComputedItem {
-        var income = 0.0, expense = 0.0, count = 0
-        var transferIn = 0.0
-        // Manually valued accounts: only savings moved in after the last valuation are added
-        var pendingTransferIn = 0.0
+    func liveBalance(
+        transactions: [TransactionItem],
+        savingsTargets: [String: String] = [:],
+        worksheetSavings: (total: Double, pending: Double, count: Int)? = nil
+    ) -> AccountComputedItem {
+        var income = 0.0, expense = 0.0, count = worksheetSavings?.count ?? 0
+        var transferIn = worksheetSavings?.total ?? 0
+        // Manually valued accounts: only transfers & savings dated on or after the last valuation are added
+        var pendingTransferIn = worksheetSavings?.pending ?? 0
         for tx in transactions {
-            if tx.accountId == id {
+            if tx.type == .expense, savingsTargets[tx.categoryId] == id {
+                count += 1
+                transferIn += tx.amount
+                if tx.date >= updatedAt { pendingTransferIn += tx.amount }
+            } else if tx.accountId == id {
                 count += 1
                 if tx.type == .income { income += tx.amount } else { expense += tx.amount }
                 // Transfer pairs also move manually valued accounts after their last valuation
-                if tx.isAccountTransfer && tx.date > updatedAt {
+                if tx.isAccountTransfer && tx.date >= updatedAt {
                     pendingTransferIn += tx.type == .income ? tx.amount : -tx.amount
                 }
-            } else if tx.type == .expense, savingsTargets[tx.categoryId] == id {
-                count += 1
-                transferIn += tx.amount
-                if tx.date > updatedAt { pendingTransferIn += tx.amount }
             }
         }
         // A transfer in raises an asset and pays down a liability
@@ -91,7 +164,8 @@ extension FinancialAccount {
             txExpenseSum: expense,
             txNetDelta: delta,
             txCount: count,
-            txTransferInSum: transferIn
+            txTransferInSum: transferIn,
+            pendingTransferIn: pendingTransferIn
         )
     }
 }
@@ -131,7 +205,11 @@ extension LedgerState {
                          now: Date = Date()) -> NetWorthSummaryMetrics {
         let targets = savingsTargets
         let workspaceAccounts = accounts.filter { workspace.includes($0.mode) }
-        let items = workspaceAccounts.map { $0.liveBalance(transactions: transactions, savingsTargets: targets) }
+        let wsTransfers = worksheetSavingsTransfers()
+        let items = workspaceAccounts.map { acc in
+            let ws = wsTransfers[acc.id].map { ($0.total, $0.pendingAfter(acc.updatedAt), $0.count) }
+            return acc.liveBalance(transactions: transactions, savingsTargets: targets, worksheetSavings: ws)
+        }
         let accountById = Dictionary(workspaceAccounts.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
 
         var liquid = 0.0, retirement = 0.0, investment = 0.0, fixed = 0.0, liabilities = 0.0
@@ -176,7 +254,11 @@ extension LedgerState {
             if key <= todayMonth {
                 let monthEnd = "\(key)-31"
                 let upTo = transactions.filter { $0.date <= monthEnd }
-                let monthItems = workspaceAccounts.map { $0.liveBalance(transactions: upTo, savingsTargets: targets) }
+                let wsUpTo = worksheetSavingsTransfers(upToMonthKey: key)
+                let monthItems = workspaceAccounts.map { acc in
+                    let ws = wsUpTo[acc.id].map { ($0.total, $0.pendingAfter(acc.updatedAt), $0.count) }
+                    return acc.liveBalance(transactions: upTo, savingsTargets: targets, worksheetSavings: ws)
+                }
                 return ClassTotals(monthItems).point(month: month, label: label, key: key)
             }
             // Forecast: planned net of this month on top of the running forecast

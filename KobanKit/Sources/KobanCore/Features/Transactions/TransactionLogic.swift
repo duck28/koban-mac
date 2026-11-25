@@ -159,9 +159,10 @@ extension LedgerState {
 // MARK: - Recurring rules
 
 extension RecurringRule {
-    /// Monthly equivalent used by the summary banner (biweekly * 26 / 12, bimonthly / 2, quarterly / 3, yearly / 12).
+    /// Monthly equivalent used by the summary banner (weekly * 52 / 12, biweekly * 26 / 12, bimonthly / 2, quarterly / 3, yearly / 12).
     var monthlyEquivalent: Double {
         switch frequency {
+        case .weekly: return (amount * 52) / 12
         case .biweekly: return (amount * 26) / 12
         case .monthly: return amount
         case .bimonthly: return amount / 2
@@ -173,6 +174,7 @@ extension RecurringRule {
     /// Annual equivalent used by Yearly Planner seeding.
     var annualEquivalent: Double {
         switch frequency {
+        case .weekly: return amount * 52
         case .biweekly: return amount * 26
         case .monthly: return amount * 12
         case .bimonthly: return amount * 6
@@ -184,35 +186,50 @@ extension RecurringRule {
     /// Month spacing between postings (>1 for bimonthly, quarterly, yearly).
     var monthInterval: Int {
         switch frequency {
-        case .biweekly, .monthly: return 1
+        case .weekly, .biweekly, .monthly: return 1
         case .bimonthly: return 2
         case .quarterly: return 3
         case .yearly: return 12
         }
     }
 
-    /// Days in the month this rule posts on (biweekly yields two dates 14 days apart within 1...28).
+    /// Days in the month this rule posts on.
     var postingDaysInMonth: [Int] {
         let d = min(28, max(1, dayOfMonth))
+        if frequency == .weekly {
+            let base = ((d - 1) % 7) + 1
+            return [base, base + 7, base + 14, base + 21]
+        }
         if frequency == .biweekly {
             return d <= 14 ? [d, d + 14] : [d - 14, d]
         }
         return [d]
     }
 
-    /// True when the rule has an explicit start (start week for bi-weekly, start month for
-    /// bi-monthly / quarterly / yearly), so the amount due varies per month.
+    /// True when the rule has an explicit start (start date for weekly/bi-weekly/monthly,
+    /// start month or start date for bi-monthly / quarterly / yearly), so the amount due
+    /// is computed per month from the schedule.
     var isScheduled: Bool {
-        if frequency == .biweekly { return RecurringSchedule.dayNumber(startDate) != nil }
-        if monthInterval > 1 { return startMonth.flatMap(parseMonthIndex) != nil }
+        if frequency == .weekly || frequency == .biweekly {
+            return RecurringSchedule.dayNumber(startDate) != nil
+        }
+        if frequency == .monthly {
+            return RecurringSchedule.dayNumber(startDate) != nil
+                || startMonth.flatMap(parseMonthIndex) != nil
+        }
+        if monthInterval > 1 {
+            return startMonth.flatMap(parseMonthIndex) != nil
+                || RecurringSchedule.dayNumber(startDate) != nil
+        }
         return false
     }
 
     /// Dates (YYYY-MM-DD) on which the rule falls due inside `monthKey`; nil when unknown
-    /// (legacy bi-monthly / quarterly / yearly rule without a start month).
+    /// (legacy bi-monthly / quarterly / yearly rule without a start month or start date).
     func occurrenceDates(inMonth monthKey: String) -> [String]? {
         guard let targetIdx = parseMonthIndex(monthKey) else { return nil }
-        if frequency == .biweekly {
+        if frequency == .weekly || frequency == .biweekly {
+            let step = frequency == .weekly ? 7 : 14
             guard let start = RecurringSchedule.dayNumber(startDate) else {
                 return postingDaysInMonth.map { "\(monthKey)-\(String(format: "%02d", $0))" }
             }
@@ -224,19 +241,43 @@ extension RecurringRule {
             let last = nextFirst - 1
             if last < start { return [] }
             let offset = max(0, first - start)
-            var day = start + Int((Double(offset) / 14).rounded(.up)) * 14
+            var day = start + Int((Double(offset) / Double(step)).rounded(.up)) * step
             var out: [String] = []
             while day <= last {
                 out.append(RecurringSchedule.isoDate(day))
-                day += 14
+                day += step
             }
             return out
         }
-        let dayStr = String(format: "%02d", postingDaysInMonth[0])
-        if monthInterval == 1 { return ["\(monthKey)-\(dayStr)"] }
-        guard let startIdx = startMonth.flatMap(parseMonthIndex) else { return nil }
+
+        let parsedStart = RecurringSchedule.dayNumber(startDate)
+        let effectiveDay: Int
+        if parsedStart != nil, let sd = startDate, let parsed = Int(sd.suffix(2)) {
+            effectiveDay = min(28, max(1, parsed))
+        } else {
+            effectiveDay = postingDaysInMonth[0]
+        }
+        let dayStr = String(format: "%02d", effectiveDay)
+        let effectiveStartMonth = startMonth ?? (parsedStart != nil ? startDate.map { String($0.prefix(7)) } : nil)
+        let startIdx = effectiveStartMonth.flatMap(parseMonthIndex)
+
+        if monthInterval == 1 {
+            if let startIdx {
+                if targetIdx < startIdx { return [] }
+                if targetIdx == startIdx, parsedStart != nil, let sd = startDate {
+                    return [sd]
+                }
+            }
+            return ["\(monthKey)-\(dayStr)"]
+        }
+
+        guard let startIdx else { return nil }
         let diff = targetIdx - startIdx
-        return diff >= 0 && diff % monthInterval == 0 ? ["\(monthKey)-\(dayStr)"] : []
+        if diff < 0 || diff % monthInterval != 0 { return [] }
+        if diff == 0, parsedStart != nil, let sd = startDate {
+            return [sd]
+        }
+        return ["\(monthKey)-\(dayStr)"]
     }
 
     /// Total amount due in `monthKey`, or nil when unknown.
@@ -349,13 +390,17 @@ extension LedgerState {
                             startDate: String? = nil, startMonth: String? = nil) -> RecurringRule? {
         guard !categoryId.isEmpty, let amt = JSNumber.parseFloat(amount), amt >= 0,
               let cat = categories.first(where: { $0.id == categoryId }) else { return nil }
-        let biweeklyStart = frequency == .biweekly ? startDate.flatMap { RecurringSchedule.dayNumber($0) != nil ? $0 : nil } : nil
-        let monthStart = frequency != .biweekly && frequency != .monthly ? startMonth.flatMap { parseMonthIndex($0) != nil ? $0 : nil } : nil
-        // The start week / month is required for these frequencies (like <input required>).
-        if frequency == .biweekly && biweeklyStart == nil { return nil }
-        if frequency != .biweekly && frequency != .monthly && monthStart == nil { return nil }
+        let isSubMonthly = frequency == .weekly || frequency == .biweekly
+        let validStartDate = startDate.flatMap { RecurringSchedule.dayNumber($0) != nil ? $0 : nil }
+        let needsMonth = frequency != .weekly && frequency != .biweekly && frequency != .monthly
+        let validStartMonth = startMonth.flatMap { parseMonthIndex($0) != nil ? $0 : nil }
+            ?? validStartDate.map { String($0.prefix(7)) }
+        // The start date / month is required for scheduled frequencies.
+        if isSubMonthly && validStartDate == nil { return nil }
+        if needsMonth && validStartMonth == nil { return nil }
         let desc = description.trimmingCharacters(in: .whitespacesAndNewlines)
-        let day = biweeklyStart.flatMap { Int($0.suffix(2)) } ?? RecurringRule.clampDay(dayOfMonth)
+        let day = validStartDate.flatMap { Int($0.suffix(2)) }.map { min(28, max(1, $0)) }
+            ?? RecurringRule.clampDay(dayOfMonth)
         return RecurringRule(
             id: "",
             mode: cat.mode,
@@ -368,8 +413,8 @@ extension LedgerState {
             taxRate: cat.taxRate ?? 0,
             deductiblePct: cat.deductiblePct ?? 100,
             active: true,
-            startDate: biweeklyStart,
-            startMonth: monthStart
+            startDate: validStartDate,
+            startMonth: needsMonth ? validStartMonth : validStartDate.map { String($0.prefix(7)) }
         )
     }
 
@@ -379,6 +424,9 @@ extension LedgerState {
         rule.id = KobanID.make("rec", suffix: false)
         for i in categories.indices where categories[i].id == rule.categoryId {
             categories[i].isRecurring = true
+        }
+        for i in monthlyBudgets.indices where monthlyBudgets[i].categoryId == rule.categoryId {
+            monthlyBudgets[i].budgetManual = false
         }
         recurringRules.append(rule)
     }
@@ -397,6 +445,12 @@ extension LedgerState {
         }
         if let sm = patch.startMonth { recurringRules[rIdx].startMonth = sm }
 
+        if patch.frequency != nil || patch.amount != nil || patch.startDate != nil || patch.startMonth != nil {
+            for i in monthlyBudgets.indices where monthlyBudgets[i].categoryId == target.categoryId {
+                monthlyBudgets[i].budgetManual = false
+            }
+        }
+
         // Scheduled rules don't seed a monthly-equivalent budget: the worksheet derives it per month.
         if let amount = patch.amount, amount > 0, !recurringRules[rIdx].isScheduled {
             let eq = (recurringRules[rIdx].monthlyEquivalent * 100).rounded() / 100
@@ -413,8 +467,15 @@ extension LedgerState {
 
     /// handleToggleRecurringRule (active ⇄ paused).
     mutating func toggleRecurringRule(_ id: String) {
+        var catId: String?
         for i in recurringRules.indices where recurringRules[i].id == id {
             recurringRules[i].active.toggle()
+            catId = recurringRules[i].categoryId
+        }
+        if let catId {
+            for i in monthlyBudgets.indices where monthlyBudgets[i].categoryId == catId {
+                monthlyBudgets[i].budgetManual = false
+            }
         }
     }
 
@@ -459,8 +520,9 @@ extension LedgerState {
                 : r.postingDaysInMonth.map { "\(monthKey)-\(String(format: "%02d", $0))" }
             for dateStr in dates {
                 let dayStr = String(dateStr.suffix(2))
+                let isMultiPerMonth = r.frequency == .weekly || r.frequency == .biweekly
                 let alreadyExists: Bool
-                if r.frequency == .biweekly {
+                if isMultiPerMonth {
                     alreadyExists = transactions.contains { tx in
                         tx.monthKey == monthKey && tx.date == dateStr && (tx.recurringId == r.id
                             || (tx.categoryId == r.categoryId && tx.description == r.description
@@ -474,7 +536,7 @@ extension LedgerState {
                     }
                 }
                 guard !alreadyExists else { continue }
-                let txId = r.frequency == .biweekly ? "tx-rec-\(r.id)-\(monthKey)-\(dayStr)" : "tx-rec-\(r.id)-\(monthKey)"
+                let txId = isMultiPerMonth ? "tx-rec-\(r.id)-\(monthKey)-\(dayStr)" : "tx-rec-\(r.id)-\(monthKey)"
                 newTxs.append(TransactionItem(
                     id: txId,
                     date: dateStr,

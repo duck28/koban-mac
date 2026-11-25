@@ -327,6 +327,33 @@ final class LedgerStore {
         update { $0.renameCategory(id, to: name) }
     }
 
+    func setCategoryTargetAccount(_ id: String, targetAccountId: String?) {
+        update { $0.setCategoryTargetAccount(id, targetAccountId: targetAccountId) }
+    }
+
+    func reorderCategories(draggedCategoryId: String, targetGroupId: String,
+                           targetCategoryId: String?, position: ReorderPosition,
+                           baseOrderIds: [String]? = nil) {
+        update {
+            $0.reorderCategories(draggedCategoryId: draggedCategoryId,
+                                   targetGroupId: targetGroupId,
+                                   targetCategoryId: targetCategoryId,
+                                   position: position,
+                                   baseOrderIds: baseOrderIds)
+        }
+    }
+
+    func setWorksheetSort(by field: WorksheetSortField, direction: WorksheetSortDirection) {
+        update {
+            $0.settings.worksheetSortBy = field
+            $0.settings.worksheetSortDir = direction
+        }
+    }
+
+    func setWorksheetColumnWidths(_ widths: WorksheetColumnWidths) {
+        update { $0.settings.worksheetColumnWidths = widths }
+    }
+
     func toggleCategoryFixed(_ id: String) {
         update { $0.toggleCategoryFixed(id) }
     }

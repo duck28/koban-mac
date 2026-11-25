@@ -144,4 +144,68 @@ final class RecurringScheduleTests: XCTestCase {
         XCTAssertEqual(again.settings.autoFillFixedActuals, false)
         XCTAssertEqual(again.categories.first { $0.id == "c-rent" }?.isFixedCost, true)
     }
+
+    func testWeeklyWithStartDate() {
+        let r = rule(type: .expense, categoryId: "c-groceries", amount: 100,
+                     frequency: .weekly, day: 16, startDate: "2026-10-16")
+        XCTAssertTrue(r.isScheduled)
+        XCTAssertEqual(r.occurrenceDates(inMonth: "2026-09"), [])
+        XCTAssertEqual(r.amountDue(inMonth: "2026-09"), 0)
+        XCTAssertEqual(r.occurrenceDates(inMonth: "2026-10"), ["2026-10-16", "2026-10-23", "2026-10-30"])
+        XCTAssertEqual(r.occurrenceDates(inMonth: "2026-11"), ["2026-11-06", "2026-11-13", "2026-11-20", "2026-11-27"])
+        XCTAssertEqual(r.occurrenceDates(inMonth: "2027-01"),
+                       ["2027-01-01", "2027-01-08", "2027-01-15", "2027-01-22", "2027-01-29"])
+        XCTAssertEqual(r.amountDue(inMonth: "2027-01"), 500)
+
+        var state = LedgerState.empty()
+        state.recurringRules = [r]
+        XCTAssertEqual(state.applyRecurring(toMonth: "2026-11", workspace: .home), .posted(4))
+        XCTAssertEqual(state.applyRecurring(toMonth: "2026-11", workspace: .home), .alreadyPosted)
+    }
+
+    func testSortWorksheetRowsAndReorderCategories() {
+        var state = LedgerState.empty()
+        state.settings.activeWorkspace = .combined
+        state.groups = [
+            CategoryGroup(id: "g-sav", mode: .home, name: "Savings", kind: .savings, color: "#3F704D", column: 1, order: 0),
+            CategoryGroup(id: "g-exp", mode: .freelancer, name: "Business", kind: .expense, color: "#3F6E8C", column: 0, order: 1),
+        ]
+        state.categories = [
+            CategoryItem(id: "c1", groupId: "g-sav", mode: .home, name: "Zeta", kind: .savings, defaultBudget: 500, order: 0),
+            CategoryItem(id: "c2", groupId: "g-sav", mode: .home, name: "Alpha", kind: .savings, defaultBudget: 2000, order: 1),
+            CategoryItem(id: "c3", groupId: "g-sav", mode: .home, name: "Middle", kind: .savings, defaultBudget: 833, order: 2),
+            CategoryItem(id: "c4", groupId: "g-exp", mode: .freelancer, name: "Hosting", kind: .expense, defaultBudget: 100, order: 0),
+        ]
+        state.monthlyBudgets = [
+            MonthlyBudgetEntry(monthKey: "2026-11", categoryId: "c1", budget: 500, directActual: 400),
+            MonthlyBudgetEntry(monthKey: "2026-11", categoryId: "c2", budget: 2000, directActual: 2000),
+            MonthlyBudgetEntry(monthKey: "2026-11", categoryId: "c3", budget: 833, directActual: 750),
+        ]
+
+        let savRows = state.monthSummary(monthKey: "2026-11", workspace: .combined)
+            .groups.first { $0.group.id == "g-sav" }?.rows ?? []
+        XCTAssertEqual(LedgerState.sortWorksheetRows(savRows, by: .name, direction: .asc).map(\.category.id),
+                       ["c2", "c3", "c1"])
+        XCTAssertEqual(LedgerState.sortWorksheetRows(savRows, by: .budget, direction: .desc).map(\.category.id),
+                       ["c2", "c3", "c1"])
+        XCTAssertEqual(LedgerState.sortWorksheetRows(savRows, by: .actual, direction: .desc).map(\.category.id),
+                       ["c2", "c3", "c1"])
+        XCTAssertEqual(LedgerState.sortWorksheetRows(savRows, by: .diff, direction: .desc).map(\.category.id),
+                       ["c1", "c3", "c2"])
+
+        state.settings.worksheetSortBy = .budget
+        state.reorderCategories(draggedCategoryId: "c1", targetGroupId: "g-sav", targetCategoryId: "c2",
+                                position: .after, baseOrderIds: ["c2", "c3", "c1"])
+        XCTAssertEqual(state.settings.worksheetSortBy, .manual)
+        XCTAssertEqual(state.categories.filter { $0.groupId == "g-sav" }.sorted { $0.order < $1.order }.map(\.id),
+                       ["c2", "c1", "c3"])
+
+        state.reorderCategories(draggedCategoryId: "c2", targetGroupId: "g-exp", targetCategoryId: "c4", position: .before)
+        let moved = state.categories.first { $0.id == "c2" }
+        XCTAssertEqual(moved?.groupId, "g-exp")
+        XCTAssertEqual(moved?.kind, .expense)
+        XCTAssertEqual(moved?.mode, .freelancer)
+        XCTAssertEqual(state.categories.filter { $0.groupId == "g-exp" }.sorted { $0.order < $1.order }.map(\.id),
+                       ["c2", "c4"])
+    }
 }

@@ -70,6 +70,10 @@ extension LedgerStore {
         update { $0.updateGoalAmount(id, currentAmount: currentAmount) }
     }
 
+    func updateGoal(_ id: String, _ patch: (inout SavingsGoal) -> Void) {
+        update { $0.updateGoal(id, patch) }
+    }
+
     func deleteGoal(_ id: String) {
         update { $0.deleteGoal(id) }
     }

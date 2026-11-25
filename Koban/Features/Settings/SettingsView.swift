@@ -785,7 +785,7 @@ struct SettingsView: View {
                                 .fontWeight(.medium)
                         }
                         .font(.zen(12))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Zen.onPositive)
                         .padding(.horizontal, 14)
                         .frame(height: 34)
                         .background(Zen.positive, in: RoundedRectangle(cornerRadius: 8))

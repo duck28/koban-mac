@@ -11,7 +11,7 @@ final class UpdateChecker {
     static let releasesPageURL = URL(string: "https://github.com/duck28/koban-mac/releases")!
 
     var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.5.1"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.5.2"
     }
 
     var latestVersion: String?

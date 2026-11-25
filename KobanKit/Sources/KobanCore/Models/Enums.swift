@@ -72,7 +72,7 @@ enum TransactionStatus: String, Codable, CaseIterable, Sendable {
 }
 
 enum RecurrenceFrequency: String, Codable, CaseIterable, Sendable {
-    case biweekly, monthly, bimonthly, quarterly, yearly
+    case weekly, biweekly, monthly, bimonthly, quarterly, yearly
 
     init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -114,6 +114,7 @@ enum WebDavMode: String, Codable, Sendable {
 }
 
 enum YearlyPlanSchedule: String, Codable, CaseIterable, Sendable {
+    case weekly
     case biweekly
     case monthly
     case bimonthly
@@ -129,6 +130,7 @@ enum YearlyPlanSchedule: String, Codable, CaseIterable, Sendable {
     /// Payments per year (annual = per-payment amount × this) — planPeriodsPerYear on Windows.
     var periodsPerYear: Double {
         switch self {
+        case .weekly: return 52
         case .biweekly: return 26
         case .monthly: return 12
         case .bimonthly: return 6
@@ -140,6 +142,7 @@ enum YearlyPlanSchedule: String, Codable, CaseIterable, Sendable {
     /// The schedule matching a recurring rule's frequency (planScheduleForFrequency).
     init(frequency: RecurrenceFrequency) {
         switch frequency {
+        case .weekly: self = .weekly
         case .biweekly: self = .biweekly
         case .monthly: self = .monthly
         case .bimonthly: self = .bimonthly
@@ -147,4 +150,26 @@ enum YearlyPlanSchedule: String, Codable, CaseIterable, Sendable {
         case .yearly: self = .annualLump
         }
     }
+}
+
+enum WorksheetSortField: String, Codable, CaseIterable, Sendable {
+    case manual, name, budget, actual, diff
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = WorksheetSortField(rawValue: raw) ?? .manual
+    }
+}
+
+enum WorksheetSortDirection: String, Codable, CaseIterable, Sendable {
+    case asc, desc
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = WorksheetSortDirection(rawValue: raw) ?? .asc
+    }
+}
+
+enum ReorderPosition: String, Codable, Sendable {
+    case before, after
 }

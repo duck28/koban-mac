@@ -4,7 +4,7 @@ import SwiftUI
 /// "Paper & Ink" design tokens, 1:1 with the CSS variables in src/App.css.
 /// All four palettes (Zen, Monochrome, Slate, Forest) in light ("Washi") and dark ("Sumi").
 struct ZenTokens {
-    var app, surface, raised, line, ink, ink2, ink3, accent, positive, indigo, warning, viewer, onInk: UInt32
+    var app, surface, raised, line, ink, ink2, ink3, accent, positive, indigo, warning, viewer, onInk, onAccent, onPositive, onIndigo: UInt32
 }
 
 enum Zen {
@@ -17,35 +17,43 @@ enum Zen {
         case (.zen, false):
             return ZenTokens(app: 0xF5F3EE, surface: 0xFBFAF7, raised: 0xEEEBE4, line: 0xE3DFD6, ink: 0x1F1E1C,
                              ink2: 0x5F5B54, ink3: 0x9B968D, accent: 0xB9432F, positive: 0x3F704D, indigo: 0x3F6E8C,
-                             warning: 0xB8862D, viewer: 0xE8E5DE, onInk: 0xFBFAF7)
+                             warning: 0xB8862D, viewer: 0xE8E5DE, onInk: 0xFBFAF7,
+                             onAccent: 0xFFFFFF, onPositive: 0xFFFFFF, onIndigo: 0xFFFFFF)
         case (.zen, true):
             return ZenTokens(app: 0x141413, surface: 0x1A1A18, raised: 0x262522, line: 0x2D2C29, ink: 0xEBE7DF,
                              ink2: 0xAAA59B, ink3: 0x6F6B64, accent: 0xE0644C, positive: 0x68A878, indigo: 0x679BC0,
-                             warning: 0xE0A94C, viewer: 0x0F0F0E, onInk: 0x161614)
+                             warning: 0xE0A94C, viewer: 0x0F0F0E, onInk: 0x161614,
+                             onAccent: 0xFFFFFF, onPositive: 0xFFFFFF, onIndigo: 0xFFFFFF)
         case (.monochrome, false):
             return ZenTokens(app: 0xF6F6F6, surface: 0xFFFFFF, raised: 0xE8E8E8, line: 0xCCCCCC, ink: 0x000000,
                              ink2: 0x383838, ink3: 0x757575, accent: 0x111111, positive: 0x262626, indigo: 0x404040,
-                             warning: 0x616161, viewer: 0xEAEAEA, onInk: 0xFFFFFF)
+                             warning: 0x616161, viewer: 0xEAEAEA, onInk: 0xFFFFFF,
+                             onAccent: 0xFFFFFF, onPositive: 0xFFFFFF, onIndigo: 0xFFFFFF)
         case (.monochrome, true):
             return ZenTokens(app: 0x080808, surface: 0x111111, raised: 0x1C1C1C, line: 0x2B2B2B, ink: 0xFDFDFD,
                              ink2: 0xADADAD, ink3: 0x6E6E6E, accent: 0xFFFFFF, positive: 0xE5E5E5, indigo: 0xCCCCCC,
-                             warning: 0x999999, viewer: 0x000000, onInk: 0x000000)
+                             warning: 0x999999, viewer: 0x000000, onInk: 0x000000,
+                             onAccent: 0x000000, onPositive: 0x000000, onIndigo: 0x000000)
         case (.slate, false):
             return ZenTokens(app: 0xF1F5F9, surface: 0xFFFFFF, raised: 0xE2E8F0, line: 0xCBD5E1, ink: 0x0F172A,
                              ink2: 0x475569, ink3: 0x94A3B8, accent: 0x0284C7, positive: 0x059669, indigo: 0x3B82F6,
-                             warning: 0xD97706, viewer: 0xE2E8F0, onInk: 0xFFFFFF)
+                             warning: 0xD97706, viewer: 0xE2E8F0, onInk: 0xFFFFFF,
+                             onAccent: 0xFFFFFF, onPositive: 0xFFFFFF, onIndigo: 0xFFFFFF)
         case (.slate, true):
             return ZenTokens(app: 0x0B0F17, surface: 0x111827, raised: 0x1E293B, line: 0x334155, ink: 0xF8FAFC,
                              ink2: 0x94A3B8, ink3: 0x64748B, accent: 0x38BDF8, positive: 0x34D399, indigo: 0x60A5FA,
-                             warning: 0xFBBF24, viewer: 0x070A0F, onInk: 0x0B0F17)
+                             warning: 0xFBBF24, viewer: 0x070A0F, onInk: 0x0B0F17,
+                             onAccent: 0x0B0F17, onPositive: 0x0B0F17, onIndigo: 0x0B0F17)
         case (.forest, false):
             return ZenTokens(app: 0xF2F5F1, surface: 0xFAFBFA, raised: 0xE3EAE1, line: 0xCED7CC, ink: 0x142217,
                              ink2: 0x485C4C, ink3: 0x87998B, accent: 0x1E5A38, positive: 0x2E7D32, indigo: 0x2C6E64,
-                             warning: 0xC28100, viewer: 0xE3EAE1, onInk: 0xFFFFFF)
+                             warning: 0xC28100, viewer: 0xE3EAE1, onInk: 0xFFFFFF,
+                             onAccent: 0xFFFFFF, onPositive: 0xFFFFFF, onIndigo: 0xFFFFFF)
         case (.forest, true):
             return ZenTokens(app: 0x0C1410, surface: 0x13201A, raised: 0x1C2E25, line: 0x273E33, ink: 0xF0F7F2,
                              ink2: 0x9DB5A3, ink3: 0x5F7A67, accent: 0x34D399, positive: 0x4ADE80, indigo: 0x2DD4BF,
-                             warning: 0xFACC15, viewer: 0x080D0A, onInk: 0x0C1410)
+                             warning: 0xFACC15, viewer: 0x080D0A, onInk: 0x0C1410,
+                             onAccent: 0x0C1410, onPositive: 0x0C1410, onIndigo: 0x0C1410)
         }
     }
 
@@ -62,6 +70,9 @@ enum Zen {
     static var warning: Color { token(\.warning) }  // gold ochre
     static var viewer: Color { token(\.viewer) }    // backdrop
     static var onInk: Color { token(\.onInk) }      // text on ink buttons
+    static var onAccent: Color { token(\.onAccent) }     // text on accent buttons
+    static var onPositive: Color { token(\.onPositive) } // text on positive buttons
+    static var onIndigo: Color { token(\.onIndigo) }     // text on indigo buttons
 
     /// Tokens are read thousands of times per render. Building a new dynamic NSColor each time
     /// allocated a closure-backed color per access and made every Color compare unequal, so SwiftUI
